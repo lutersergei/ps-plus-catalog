@@ -10,6 +10,7 @@ const schema = `
 CREATE TABLE IF NOT EXISTS games (
 	id                TEXT PRIMARY KEY,
 	title             TEXT NOT NULL,
+	title_en          TEXT,
 	release_year      INTEGER,
 	platforms         TEXT,
 	image_url         TEXT,
