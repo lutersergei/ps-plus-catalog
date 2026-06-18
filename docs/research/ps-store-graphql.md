@@ -1,6 +1,40 @@
-# PS Store GraphQL — находки разведки (Task 2)
+# PS Store — находки разведки (Task 2)
 
 Дата: 2026-06-18. Регион: tr-TR.
+
+## ✅ ВЫБРАННЫЙ ИСТОЧНИК КАТАЛОГА: gameslist (imagic)
+
+Чистый публичный JSON со всем каталогом PS Plus, без хэшей/whitelist/авторизации:
+
+```
+GET https://www.playstation.com/bin/imagic/gameslist?locale=tr-tr&categoryList=plus-games-list
+```
+
+- Заголовки: обычный `user-agent` + `referer: https://www.playstation.com/tr-tr/ps-plus/games/`.
+  Куки/Akamai НЕ обязательны (проверено).
+- Ответ: массив групп по алфавиту: `[{catalogKey,count,games:[...]}]` (27 групп, ~469 игр).
+- Поле игры:
+  - `conceptId` (int) — id концепта, ключ;
+  - `name` (локализованное), **`nameEn`** (английское — для матчинга оценок);
+  - `conceptUrl` — ссылка на стор;
+  - `imageUrl` — обложка;
+  - `genre` — список (есть дубли, нужен дедуп), напр. `["ADVENTURE","ACTION"]`;
+  - `releaseDate` — ISO8601 (`2017-12-05T21:00:00Z`), год берётся из него;
+  - `device` — список платформ (`["PS4","PS5"]`);
+  - `productId`, `ageRating`, `streamingSupported`.
+- Пропусков по ключевым полям нет (проверено на всех 469).
+- `categoryList=plus-games-list` = весь каталог PS Plus (Extra). Возможны и другие
+  значения (classics/trials) — для Extra-каталога нужен `plus-games-list`.
+
+Фикстуры: `testdata/gameslist_full.json` (реальный ответ), `testdata/gameslist_sample.json`
+(урезанный для тестов парсера).
+
+Это заменяет GraphQL-маршрут ниже (тот оставлен как справка/запасной вариант для
+доп. данных по концепту, если понадобится).
+
+---
+
+## (Справка) GraphQL categoryGridRetrieve
 
 ## Рабочий вызов categoryGridRetrieve
 
