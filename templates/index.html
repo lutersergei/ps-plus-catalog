@@ -3,1038 +3,124 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{if .FavoritesOnly}}Избранное — {{end}}PS Plus Extra (Турция)</title>
+<title>PS Plus Extra (Турция) — каталог с оценками</title>
 <style>
-:root {
-  --paper: #EFF1EE;
-  --card: #FBFCFA;
-  --ink: #131A26;
-  --muted: #66707F;
-  --faint: #98A1AD;
-  --cobalt: #2547D0;
-  --line: #D7DBD4;
-  --line-soft: #E4E7E2;
-  --good: #1E7F4C;
-  --mid: #A67C0F;
-  --bad: #BE4436;
-  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-  --sans: -apple-system, "Segoe UI", system-ui, Roboto, sans-serif;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #14181D; --card: #1C2127; --ink: #E9EDF0; --muted: #8B96A3;
-    --faint: #5D6873; --cobalt: #8DA2FF; --line: #2A3138; --line-soft: #22282E;
-    --good: #4CBB81; --mid: #D3A83B; --bad: #E0705F;
-  }
-}
-:root[data-theme="light"] {
-  --paper: #EFF1EE; --card: #FBFCFA; --ink: #131A26; --muted: #66707F;
-  --faint: #98A1AD; --cobalt: #2547D0; --line: #D7DBD4; --line-soft: #E4E7E2;
-  --good: #1E7F4C; --mid: #A67C0F; --bad: #BE4436;
-}
-:root[data-theme="dark"] {
-  --paper: #14181D; --card: #1C2127; --ink: #E9EDF0; --muted: #8B96A3;
-  --faint: #5D6873; --cobalt: #8DA2FF; --line: #2A3138; --line-soft: #22282E;
-  --good: #4CBB81; --mid: #D3A83B; --bad: #E0705F;
-}
-
-* { box-sizing: border-box; }
-/* overflow-anchor: none — компенсируем прокрутку при догрузке ленты вверх сами,
-   иначе Chrome/Firefox сделают это вторым слоем и страница «прыгнет» дважды */
-body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.45 var(--sans); overflow-anchor: none; }
-a { color: var(--cobalt); }
-:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; border-radius: 4px; }
-
-.wrap { max-width: 1440px; margin: 0 auto; padding: 0 24px; }
-
-/* ---------- Шапка: одна строка ---------- */
-.masthead { border-bottom: 1px solid var(--line); }
-.masthead .bar { display: flex; align-items: center; gap: 14px; padding: 13px 24px; }
-.wordmark {
-  font: 700 13px/1 var(--mono);
-  letter-spacing: .16em; text-transform: uppercase;
-  color: var(--cobalt);
-  text-decoration: none;
-}
-.wordmark:hover { color: var(--ink); }
-.count { color: var(--muted); font-size: 12.5px; }
-.count b { color: var(--ink); font-family: var(--mono); font-weight: 700; }
-.spacer { flex: 1; }
-.mainnav { display: flex; align-items: center; gap: 4px; }
-.navlink {
-  padding: 6px 9px; border-radius: 7px;
-  color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600;
-}
-.navlink:hover, .navlink.on { color: var(--cobalt); background: var(--line-soft); }
-.google-login {
-  color: var(--ink); background: var(--card); text-decoration: none;
-  border: 1px solid var(--line); border-radius: 7px;
-  padding: 6px 10px; font-size: 12px; font-weight: 600;
-}
-.google-login:hover { color: var(--cobalt); border-color: var(--cobalt); }
-.google-login .compact { display: none; }
-.account { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.avatar, .avatar-fallback {
-  width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto;
-  border: 1px solid var(--line); background: var(--line-soft);
-}
-.avatar { object-fit: cover; }
-.avatar-fallback { display: grid; place-items: center; font: 700 11px var(--mono); color: var(--cobalt); }
-.account-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
-.logout-form { margin: 0; }
-.logout-button {
-  border: 0; background: transparent; color: var(--muted); cursor: pointer;
-  padding: 5px 2px; font: 12px var(--sans);
-}
-.logout-button:hover { color: var(--bad); }
-
-/* Справка-тултип */
-.help { position: relative; }
-.help > summary {
-  list-style: none; cursor: pointer;
-  width: 26px; height: 26px;
-  display: grid; place-items: center;
-  border: 1px solid var(--line); border-radius: 50%;
-  background: var(--card); color: var(--muted);
-  font: 700 13px/1 var(--mono);
-}
-.help > summary::-webkit-details-marker { display: none; }
-.help[open] > summary, .help > summary:hover { color: var(--cobalt); border-color: var(--cobalt); }
-.help .panel {
-  position: absolute; right: 0; top: 34px; z-index: 30;
-  width: 330px;
-  background: var(--card);
-  border: 1px solid var(--line); border-radius: 10px;
-  padding: 12px 14px;
-  box-shadow: 0 10px 30px rgba(0,0,0,.18);
-  display: flex; flex-direction: column; gap: 9px;
-  font-size: 12px; line-height: 1.5; color: var(--muted);
-}
-.help .panel .g { font-family: var(--mono); color: var(--ink); }
-
-/* Переключатель темы */
-.tbtn {
-  width: 26px; height: 26px;
-  display: grid; place-items: center;
-  border: 1px solid var(--line); border-radius: 50%;
-  background: var(--card); color: var(--muted);
-  font-size: 13px; line-height: 1;
-  cursor: pointer; padding: 0;
-}
-.tbtn:hover { color: var(--cobalt); border-color: var(--cobalt); }
-
-/* ---------- Фильтры + выдача ---------- */
-.app-shell {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 22px;
-  align-items: start;
-  padding: 20px 0 0;
-  min-width: 0;
-}
-.filter-sidebar {
-  position: sticky;
-  top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-  max-height: calc(100vh - 28px);
-  overflow: auto;
-  padding: 16px;
-  background: color-mix(in oklab, var(--card) 72%, transparent);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  min-width: 0;
-}
-.filter-heading {
-  font: 700 11px/1 var(--mono);
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--ink);
-}
-.results-panel { min-width: 0; }
-.results-panel { padding-top: 0; }
-.f { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.f > label, .f > .flabel {
-  font: 600 10px/1 var(--mono);
-  letter-spacing: .12em; text-transform: uppercase;
-  color: var(--muted);
-}
-.f .flabel .val { color: var(--cobalt); letter-spacing: 0; }
-.f input[type=text], .f input[type=number], .f select, .genre-dd summary {
-  background: var(--card); color: var(--ink);
-  border: 1px solid var(--line); border-radius: 7px;
-  padding: 7px 9px; font: 13px var(--sans);
-}
-.f input[type=number] { width: 78px; font-family: var(--mono); }
-.filter-sidebar .f input[type=text],
-.filter-sidebar .f select,
-.filter-sidebar .genre-dd summary { width: 100%; min-width: 0; max-width: 100%; }
-.filter-sidebar .f input[type=number] { width: 100%; min-width: 0; }
-.filter-sidebar .pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
-.filter-sidebar .range { width: 100%; }
-.f input[type=text] { width: 180px; }
-.f input::placeholder { color: var(--faint); }
-.pair { display: flex; align-items: center; gap: 5px; }
-.pair .dash { color: var(--faint); }
-.genre-dd { position: relative; }
-.genre-dd summary { list-style: none; cursor: pointer; min-width: 124px; display: inline-block; }
-.genre-dd summary::-webkit-details-marker { display: none; }
-.genre-dd summary::after { content: " ▾"; color: var(--muted); }
-.genre-panel {
-  position: absolute; z-index: 20; margin-top: 4px;
-  max-height: 260px; overflow: auto;
-  background: var(--card);
-  border: 1px solid var(--line); border-radius: 8px;
-  padding: 6px; min-width: 210px;
-  box-shadow: 0 10px 30px rgba(0,0,0,.18);
-}
-.filter-sidebar .genre-panel {
-  position: static;
-  width: 100%;
-  min-width: 0;
-  max-height: 220px;
-  box-shadow: none;
-}
-.genre-opt {
-  display: flex; align-items: center; gap: 8px;
-  padding: 5px 6px; font-size: 13px;
-  white-space: nowrap; cursor: pointer; border-radius: 6px;
-}
-.genre-opt:hover { background: var(--line-soft); }
-.checks { display: flex; gap: 14px; padding: 8px 0; }
-.filter-sidebar .checks { flex-direction: column; gap: 8px; padding: 2px 0; }
-.checks label { display: flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
-input[type=checkbox] { accent-color: var(--cobalt); width: 14px; height: 14px; }
-.filter-actions { display: flex; align-items: center; gap: 12px; padding-top: 2px; }
-.filter-actions .btn { flex: 1; }
-.btn {
-  background: var(--cobalt); color: var(--paper);
-  border: none; border-radius: 7px;
-  padding: 8px 18px; font: 600 13px var(--sans); cursor: pointer;
-}
-a.reset { font-size: 13px; color: var(--muted); padding-bottom: 8px; }
-
-/* Двухползунковый range */
-.range { position: relative; width: 168px; height: 26px; }
-.range .track {
-  position: absolute; left: 0; right: 0; top: 11px;
-  height: 4px; border-radius: 99px;
-  background: var(--line);
-}
-.range .fill { position: absolute; top: 0; bottom: 0; border-radius: 99px; background: var(--cobalt); }
-.range input[type=range] {
-  position: absolute; left: 0; top: 2px;
-  width: 100%; margin: 0;
-  -webkit-appearance: none; appearance: none;
-  background: none; pointer-events: none;
-  height: 22px;
-}
-.range input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  pointer-events: auto;
-  width: 16px; height: 16px;
-  border-radius: 50%;
-  background: var(--card);
-  border: 2px solid var(--cobalt);
-  cursor: grab;
-  box-shadow: 0 1px 3px rgba(0,0,0,.18);
-}
-.range input[type=range]::-moz-range-thumb {
-  pointer-events: auto;
-  width: 12px; height: 12px;
-  border-radius: 50%;
-  background: var(--card);
-  border: 2px solid var(--cobalt);
-  cursor: grab;
-}
-
-/* ---------- Сетка карточек ---------- */
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
-  gap: 16px;
-  padding: 22px 0;
-}
-
-.gcard {
-  background: var(--card);
-  border: 1px solid var(--line-soft);
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex; flex-direction: column;
-  transition: box-shadow .15s, border-color .15s;
-}
-.gcard:hover { border-color: var(--line); box-shadow: 0 4px 16px rgba(0,0,0,.08); }
-
-.cover { position: relative; aspect-ratio: 1/1; background: var(--line-soft); }
-.cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.ru-flags { position: absolute; top: 7px; left: 7px; display: flex; gap: 4px; }
-.fav-toggle {
-  position: absolute; top: 7px; right: 7px; z-index: 2;
-  width: 32px; height: 32px; display: grid; place-items: center;
-  border: 1px solid rgba(255,255,255,.65); border-radius: 50%;
-  color: #fff; background: rgba(10,16,30,.56); backdrop-filter: blur(3px);
-  cursor: pointer; font-size: 18px; line-height: 1;
-}
-.fav-toggle:hover { transform: scale(1.06); background: rgba(10,16,30,.76); }
-.fav-toggle.on { color: #ff6b81; background: rgba(10,16,30,.78); }
-.fav-toggle:disabled { opacity: .55; cursor: wait; transform: none; }
-.sr-only {
-  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
-}
-.ru-flags span {
-  font: 700 8.5px/1 var(--mono); letter-spacing: .06em;
-  color: #fff; background: rgba(10,16,30,.62);
-  border-radius: 4px; padding: 3px 5px;
-  backdrop-filter: blur(2px);
-}
-.added-badge {
-  position: absolute; bottom: 7px; left: 7px;
-  font: 700 8.5px/1 var(--mono); letter-spacing: .06em;
-  color: #fff; background: rgba(10,16,30,.62);
-  border-radius: 4px; padding: 3px 5px;
-  backdrop-filter: blur(2px);
-}
-@media (max-width: 560px) {
-  .added-badge { bottom: 5px; left: 5px; }
-}
-
-.gbody { padding: 10px 10px 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
-.gtitle {
-  font-size: 13px; font-weight: 700; line-height: 1.25; letter-spacing: -.01em;
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-  min-height: 2.5em;
-}
-.gtitle a { color: var(--ink); text-decoration: none; }
-.gtitle a:hover { color: var(--cobalt); }
-.gmeta { color: var(--muted); font-size: 11px; margin-top: -4px; }
-
-/* Пара вердиктов */
-.verdict { display: flex; gap: 6px; }
-.chip {
-  position: relative; flex: 1;
-  border-radius: 8px; padding: 6px 4px 5px;
-  text-align: center;
-  border: 1px solid transparent;
-}
-.chip .n { font: 800 18px/1 var(--mono); font-variant-numeric: tabular-nums; }
-.chip .l { font: 600 8px/1 var(--mono); letter-spacing: .09em; text-transform: uppercase; margin-top: 3px; color: var(--muted); }
-.chip.good { background: color-mix(in oklab, var(--good) 13%, var(--card)); color: var(--good); }
-.chip.mid  { background: color-mix(in oklab, var(--mid) 14%, var(--card));  color: var(--mid); }
-.chip.bad  { background: color-mix(in oklab, var(--bad) 13%, var(--card));  color: var(--bad); }
-.chip.na   { border-color: var(--line); color: var(--faint); background: transparent; }
-.chip .w {
-  position: absolute; top: -6px; right: -3px;
-  font: 11px var(--mono); color: var(--muted);
-  background: var(--card); border-radius: 50%; line-height: 1;
-}
-
-/* Источники: группа критиков | группа игроков */
-.sources { display: grid; grid-template-columns: 2fr 3fr; gap: 0; }
-.sg { min-width: 0; }
-.sg-p { border-left: 1px solid var(--line-soft); padding-left: 7px; margin-left: 7px; }
-.scap {
-  font: 600 8px/1 var(--mono);
-  letter-spacing: .09em; text-transform: uppercase;
-  color: var(--faint);
-  text-align: center;
-  margin-bottom: 4px;
-}
-.cells { display: grid; gap: 2px; }
-.sg-c .cells { grid-template-columns: repeat(2, 1fr); }
-.sg-p .cells { grid-template-columns: repeat(3, 1fr); }
-.src { text-align: center; min-width: 0; }
-.src .sl { font: 600 8px/1.2 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--faint); }
-.src .sv { font: 700 11.5px/1.4 var(--mono); font-variant-numeric: tabular-nums; }
-.src .sv a { color: var(--ink); text-decoration: none; border-bottom: 1px dotted var(--faint); }
-.src .sv a:hover { color: var(--cobalt); border-bottom-color: var(--cobalt); }
-.src .na { color: var(--faint); font-weight: 400; }
-.src .sv.half { opacity: .5; }
-.src .sc { font: 8.5px/1.2 var(--mono); color: var(--faint); margin-top: 1px; white-space: nowrap; }
-
-/* Жанровые теги — внизу, переносятся на любое число строк */
-.tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; padding-top: 2px; }
-.tags span {
-  font-size: 10.5px;
-  color: var(--muted);
-  border: 1px solid var(--line-soft);
-  border-radius: 5px;
-  padding: 1px 6px;
-  white-space: nowrap;
-}
-
-/* Время — отдельная полоса внизу карточки. Шкала 0–60 ч, отметки 15/30/45 */
-.gtime {
-  border-top: 1px solid var(--line-soft);
-  padding: 8px 10px 9px;
-  display: flex; align-items: center; gap: 8px;
-}
-.gtime .h {
-  font: 800 13px/1 var(--mono); font-variant-numeric: tabular-nums;
-  white-space: nowrap; color: var(--ink); text-decoration: none;
-}
-a.h:hover { color: var(--cobalt); }
-.gtime .h small { font-weight: 600; color: var(--muted); }
-.gtime .h .na { color: var(--faint); font-weight: 400; }
-.ruler {
-  flex: 1; height: 4px; border-radius: 99px;
-  background:
-    linear-gradient(var(--line), var(--line)) 25% 0 / 1px 100% no-repeat,
-    linear-gradient(var(--line), var(--line)) 50% 0 / 1px 100% no-repeat,
-    linear-gradient(var(--line), var(--line)) 75% 0 / 1px 100% no-repeat,
-    var(--line-soft);
-  overflow: hidden;
-}
-.ruler i {
-  display: block; height: 100%;
-  background: var(--cobalt); border-radius: 99px;
-  transform-origin: left;
-  animation: fill .5s ease-out;
-}
-@keyframes fill { from { transform: scaleX(0); } }
-@media (prefers-reduced-motion: reduce) { .ruler i { animation: none; } }
-.omark { font-size: 9px; color: var(--cobalt); margin-left: -4px; }
-
-/* ---------- Лента и буквенный индекс ---------- */
-.catalog { display: flex; gap: 14px; align-items: flex-start; padding: 16px 0 22px; }
-.catalog .grid { flex: 1; padding: 0; }
-.alpha {
-  position: sticky; top: 12px;
-  display: flex; flex-direction: column; gap: 3px;
-  max-height: calc(100vh - 24px); overflow-y: auto;
-}
-.achip {
-  min-width: 26px; text-align: center;
-  padding: 4px 6px;
-  border: 1px solid var(--line-soft); border-radius: 6px;
-  background: var(--card);
-  font: 700 11px var(--mono);
-  color: var(--muted); text-decoration: none;
-}
-.achip:hover { color: var(--cobalt); border-color: var(--cobalt); }
-.achip.on { background: var(--cobalt); border-color: var(--cobalt); color: var(--paper); }
-.morewrap { display: flex; justify-content: center; padding: 4px 0 14px; }
-a.more { text-decoration: none; }
-.feed-end { height: 1px; }
-@media (max-width: 1200px) {
-  .app-shell { grid-template-columns: 1fr; gap: 16px; }
-  .filter-sidebar {
-    position: static;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-height: none;
-  }
-  .filter-heading, .filter-actions { grid-column: 1 / -1; }
-  .catalog { display: block; }
-  .alpha {
-    position: static; flex-direction: row;
-    overflow-x: auto; max-height: none;
-    margin-top: 14px; padding-bottom: 4px;
-  }
-}
-@media (max-width: 700px) {
-  .wrap { width: 100%; padding: 0 14px; }
-  .app-shell, .filter-sidebar { width: 100%; min-width: 0; }
-  .filter-sidebar { grid-template-columns: minmax(0, 1fr); padding: 14px; }
-  .filter-actions { align-items: stretch; flex-direction: column; }
-  a.reset { padding-bottom: 0; }
-  .masthead .bar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto auto;
-    gap: 8px;
-    padding: 13px 14px;
-  }
-  .wordmark {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 11px;
-    letter-spacing: .1em;
-  }
-  .count, .spacer { display: none; }
-  .mainnav { grid-column: 1 / -1; grid-row: 2; width: 100%; }
-  .navlink { flex: 1; text-align: center; }
-  .google-login, .account { grid-column: 2; grid-row: 1; }
-  .google-login .wide { display: none; }
-  .google-login .compact { display: inline; }
-  .account-name { display: none; }
-  .help { grid-column: 3; grid-row: 1; }
-  .tbtn { grid-column: 4; grid-row: 1; }
-}
-.pcount { text-align: center; color: var(--muted); font-size: 12px; padding-bottom: 50px; }
-.pcount b { font-family: var(--mono); color: var(--ink); }
-
-/* Пустое состояние */
-.empty {
-  margin: 22px 0 50px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--card);
-  padding: 46px 24px;
-  text-align: center;
-}
-.empty .big { font-size: 17px; font-weight: 700; }
-.empty p { color: var(--muted); margin: 8px auto 14px; max-width: 46ch; }
+  :root { --bg:#0e1320; --card:#1a2236; --accent:#2f6fed; --text:#e8edf7; --muted:#9aa6bf; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 -apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:20px 24px; border-bottom:1px solid #232c44; }
+  h1 { margin:0; font-size:20px; }
+  .sub { color:var(--muted); font-size:13px; margin-top:4px; }
+  form.filters { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:16px 24px; background:#121a2c; }
+  .field { display:flex; flex-direction:column; gap:4px; }
+  .field label { font-size:12px; color:var(--muted); }
+  select, button { background:var(--card); color:var(--text); border:1px solid #2c3654; border-radius:8px; padding:8px 10px; font-size:14px; }
+  button { background:var(--accent); border-color:var(--accent); cursor:pointer; }
+  a.reset { color:var(--muted); font-size:13px; align-self:center; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; padding:24px; }
+  .card { background:var(--card); border:1px solid #232c44; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }
+  .card img { width:100%; aspect-ratio:1/1; object-fit:cover; background:#0a0f1a; }
+  .card .body { padding:12px; display:flex; flex-direction:column; gap:8px; flex:1; }
+  .card .title { font-weight:600; font-size:14px; }
+  .card .title a { color:var(--text); text-decoration:none; }
+  .card .meta { color:var(--muted); font-size:12px; }
+  .genres { display:flex; flex-wrap:wrap; gap:4px; }
+  .genres span { background:#212a42; color:var(--muted); border-radius:6px; padding:2px 6px; font-size:11px; }
+  .scores { display:flex; gap:8px; margin-top:auto; }
+  .score { flex:1; text-align:center; border-radius:8px; padding:6px 4px; background:#0f1626; }
+  .score .v { font-weight:700; font-size:16px; }
+  .score .l { font-size:10px; color:var(--muted); text-transform:uppercase; }
+  .score.na .v { color:#54607c; }
+  .pager { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; padding:8px 24px 40px; }
+  .pager a, .pager span { padding:7px 11px; border-radius:8px; background:var(--card); color:var(--text); text-decoration:none; border:1px solid #2c3654; font-size:14px; }
+  .pager .cur { background:var(--accent); border-color:var(--accent); }
+  .pager .disabled { opacity:.4; pointer-events:none; }
+  .empty { padding:60px 24px; text-align:center; color:var(--muted); }
 </style>
 </head>
-<body data-favorite-api="{{.FavoriteAPIPath}}" data-csrf-token="{{.CSRFToken}}" data-favorites-page="{{.FavoritesOnly}}">
-
-<header class="masthead">
-  <div class="wrap bar">
-    <a class="wordmark" href="{{.CatalogPath}}">PS Plus Extra · Турция</a>
-    <span class="count"><b>{{.Result.Total}}</b> {{if .FavoritesOnly}}в избранном{{else}}игр{{end}}</span>
-    {{if .AuthEnabled}}
-    <nav class="mainnav" aria-label="Разделы каталога">
-      <a class="navlink {{if not .FavoritesOnly}}on{{end}}" href="{{.CatalogPath}}">Каталог</a>
-      {{if .User}}
-      <a class="navlink {{if .FavoritesOnly}}on{{end}}" href="{{.FavoritesPath}}">♥ Избранное</a>
-      {{else}}
-      <a class="navlink" href="{{.LoginPath}}?next=favorites">♥ Избранное</a>
-      {{end}}
-    </nav>
-    {{end}}
-    <span class="spacer"></span>
-    {{if .AuthEnabled}}
-      {{if .User}}
-      <div class="account" title="{{.User.Email}}">
-        {{if .User.AvatarURL}}<img class="avatar" src="{{.User.AvatarURL}}" alt="" referrerpolicy="no-referrer">{{else}}<span class="avatar-fallback">G</span>{{end}}
-        <span class="account-name">{{.User.Name}}</span>
-        <form class="logout-form" action="{{.LogoutPath}}" method="post">
-          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-          <button class="logout-button" type="submit">Выйти</button>
-        </form>
-      </div>
-      {{else}}
-      <a class="google-login" href="{{.LoginPath}}"><span class="wide">Войти через Google</span><span class="compact">Войти</span></a>
-      {{end}}
-    {{end}}
-    <details class="help">
-      <summary title="Как считаются оценки" aria-label="Как считаются оценки">?</summary>
-      <div class="panel">
-        <div><span class="g">Критики</span> — среднее оценок Metacritic и OpenCritic. <span class="g">Игроки</span> — среднее оценок игроков Metacritic, OpenCritic и рейтинга HowLongToBeat.</div>
-        <div><span class="g">●</span> голоса игроков OpenCritic учтены полностью (&gt;100 оценок) · <span class="g">◐</span> с весом 0.5 (20–100) · <span class="g">○</span> не учтены (&lt;20). В источниках оценка OC с весом 0.5 показана полупрозрачной, не учтённая — «—» с числом голосов.</div>
-        <div>Полоса времени — шкала <span class="g">0–60 ч</span> (Main + Sides), отметки 15/30/45; <span class="g">▸</span> — дольше 60 ч.</div>
-      </div>
-    </details>
-    <button class="tbtn" id="themeToggle" type="button" aria-label="Переключить тему">☾</button>
-  </div>
+<body>
+<header>
+  <h1>PS Plus Extra (Турция) — каталог с оценками</h1>
+  <div class="sub">Всего игр по фильтру: {{.Result.Total}} · страница {{.Result.Page}} из {{.Result.TotalPages}}</div>
 </header>
 
-<div class="wrap">
-<form class="filters app-shell" method="get" action="{{.CurrentPath}}">
-<aside class="filter-sidebar">
-  <div class="filter-heading">Фильтры</div>
-  <div class="f">
-    <label>Поиск</label>
-    <input type="text" name="q" value="{{.Params.Search}}" placeholder="Название игры">
+<form class="filters" method="get" action="/">
+  <div class="field">
+    <label>Год</label>
+    <select name="year">
+      <option value="">Все годы</option>
+      {{$y := .Params.Year}}
+      {{range .Years}}<option value="{{.}}" {{if eq $y .}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
   </div>
-  <div class="f">
-    <span class="flabel">Год</span>
-    <div class="pair">
-      <input type="number" name="year_from" placeholder="{{if .Years}}{{index .Years (add (len .Years) -1)}}{{end}}"
-        {{if gt .Params.YearFrom 0}}value="{{.Params.YearFrom}}"{{end}}>
-      <span class="dash">–</span>
-      <input type="number" name="year_to" placeholder="{{if .Years}}{{index .Years 0}}{{end}}"
-        {{if gt .Params.YearTo 0}}value="{{.Params.YearTo}}"{{end}}>
-    </div>
+  <div class="field">
+    <label>Жанр</label>
+    <select name="genre">
+      <option value="">Все жанры</option>
+      {{$g := .Params.Genre}}
+      {{range .Genres}}<option value="{{.}}" {{if eq $g .}}selected{{end}}>{{.}}</option>{{end}}
+    </select>
   </div>
-  <div class="f">
-    <span class="flabel">Жанр</span>
-    {{$selectedGenres := .Params.Genres}}
-    <details class="genre-dd">
-      <summary>{{if $selectedGenres}}Выбрано: {{len $selectedGenres}}{{else}}Все жанры{{end}}</summary>
-      <div class="genre-panel">
-        {{range .Genres}}
-          {{$g := .}}
-          <label class="genre-opt">
-            <input type="checkbox" name="genre" value="{{$g}}"
-              {{range $selectedGenres}}{{if eq . $g}}checked{{end}}{{end}}>{{$g}}
-          </label>
-        {{end}}
-      </div>
-    </details>
-  </div>
-
-  {{$criticFrom := printf "%.0f" .Params.CriticFrom}}
-  {{$criticTo := "100"}}{{if gt .Params.CriticTo 0.0}}{{$criticTo = printf "%.0f" .Params.CriticTo}}{{end}}
-  <div class="f">
-    <span class="flabel">Критики · <span class="val" data-out="critic">{{$criticFrom}}–{{$criticTo}}</span></span>
-    <div class="range" data-name="critic" data-min="0" data-max="100">
-      <div class="track"><div class="fill"></div></div>
-      <input type="range" class="lo" name="critic_from" min="0" max="100" value="{{$criticFrom}}" aria-label="Оценка критиков, от">
-      <input type="range" class="hi" name="critic_to" min="0" max="100" value="{{$criticTo}}" aria-label="Оценка критиков, до">
-    </div>
-  </div>
-  {{$playerFrom := printf "%.0f" .Params.PlayerFrom}}
-  {{$playerTo := "100"}}{{if gt .Params.PlayerTo 0.0}}{{$playerTo = printf "%.0f" .Params.PlayerTo}}{{end}}
-  <div class="f">
-    <span class="flabel">Игроки · <span class="val" data-out="player">{{$playerFrom}}–{{$playerTo}}</span></span>
-    <div class="range" data-name="player" data-min="0" data-max="100">
-      <div class="track"><div class="fill"></div></div>
-      <input type="range" class="lo" name="player_from" min="0" max="100" value="{{$playerFrom}}" aria-label="Оценка игроков, от">
-      <input type="range" class="hi" name="player_to" min="0" max="100" value="{{$playerTo}}" aria-label="Оценка игроков, до">
-    </div>
-  </div>
-  {{$hltbFrom := printf "%.0f" .Params.HLTBFromHours}}
-  {{$hltbTo := "80"}}{{if gt .Params.HLTBToHours 0.0}}{{$hltbTo = printf "%.0f" .Params.HLTBToHours}}{{end}}
-  <div class="f">
-    <span class="flabel">Время, ч · <span class="val" data-out="hltb">{{$hltbFrom}}–{{$hltbTo}}</span></span>
-    <div class="range" data-name="hltb" data-min="0" data-max="80">
-      <div class="track"><div class="fill"></div></div>
-      <input type="range" class="lo" name="hltb_from" min="0" max="80" value="{{$hltbFrom}}" aria-label="Время прохождения, от">
-      <input type="range" class="hi" name="hltb_to" min="0" max="80" value="{{$hltbTo}}" aria-label="Время прохождения, до">
-    </div>
-  </div>
-  <div class="f">
-    <span class="flabel">Оценок</span>
-    <div class="pair">
-      <input type="number" name="reviews_from" min="0" placeholder="от"
-        {{if gt .Params.ReviewsFrom 0}}value="{{.Params.ReviewsFrom}}"{{end}}>
-      <span class="dash">–</span>
-      <input type="number" name="reviews_to" min="0" placeholder="до"
-        {{if gt .Params.ReviewsTo 0}}value="{{.Params.ReviewsTo}}"{{end}}>
-    </div>
-  </div>
-
-  <div class="f">
-    <span class="flabel">Русский язык</span>
-    <div class="checks">
-      <label><input type="checkbox" name="ru_sub" value="1" {{if .Params.RuSubtitles}}checked{{end}}> Субтитры</label>
-      <label><input type="checkbox" name="ru_voice" value="1" {{if .Params.RuVoice}}checked{{end}}> Озвучка</label>
-    </div>
-  </div>
-  <div class="f">
+  <div class="field">
     <label>Сортировка</label>
     <select name="sort">
       {{$s := .Params.Sort}}
-      <option value="title"    {{if eq $s "title"}}selected{{end}}>По названию</option>
-      <option value="year"     {{if eq $s "year"}}selected{{end}}>По году</option>
-      <option value="critic"   {{if eq $s "critic"}}selected{{end}}>Вердикт критиков</option>
-      <option value="player"   {{if eq $s "player"}}selected{{end}}>Вердикт игроков</option>
-      <option value="reviews"  {{if eq $s "reviews"}}selected{{end}}>Количество оценок</option>
-      <option value="hltbmain" {{if eq $s "hltbmain"}}selected{{end}}>Время прохождения</option>
-      <option value="added"    {{if eq $s "added"}}selected{{end}}>По дате добавления</option>
+      <option value="title" {{if eq $s "title"}}selected{{end}}>По названию</option>
+      <option value="year" {{if eq $s "year"}}selected{{end}}>По году</option>
+      <option value="average" {{if eq $s "average"}}selected{{end}}>По средней оценке</option>
     </select>
   </div>
-  <div class="f">
+  <div class="field">
     <label>Порядок</label>
     <select name="order">
       {{$o := .Params.Order}}
-      <option value="asc"  {{if eq $o "asc"}}selected{{end}}>По возрастанию</option>
+      <option value="asc" {{if eq $o "asc"}}selected{{end}}>По возрастанию</option>
       <option value="desc" {{if eq $o "desc"}}selected{{end}}>По убыванию</option>
     </select>
   </div>
-  <div class="filter-actions">
-    <button class="btn" type="submit">Показать</button>
-    <a class="reset" href="?">Сбросить</a>
-  </div>
-</aside>
-
-<main class="results-panel">
-
-{{define "cards"}}
-{{$base := mul (add .Result.Page -1) .Result.PageSize}}
-{{$user := .User}}
-{{range $idx, $g := .Result.Games}}
-  <div class="gcard" data-i="{{add $base $idx}}">
-    <div class="cover">
-      {{if .ImageURL}}<img loading="lazy" src="{{.ImageURL}}" alt="">{{end}}
-      {{if $user}}
-      <button class="fav-toggle {{if .Favorite}}on{{end}}" type="button" data-game-id="{{.ID}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}Удалить из избранного{{else}}Добавить в избранное{{end}}">
-        <span aria-hidden="true">{{if .Favorite}}♥{{else}}♡{{end}}</span>
-      </button>
-      {{end}}
-      {{if or .RuSub .RuVoice}}
-      <div class="ru-flags">
-        {{if .RuSub}}<span>RU СУБ</span>{{end}}
-        {{if .RuVoice}}<span>RU ОЗВ</span>{{end}}
-      </div>
-      {{end}}
-      {{if .CatalogAddedOn.Valid}}
-      {{$badgeClass := "added-badge observed"}}
-      {{if or (eq .CatalogAddedSource.String "announcement") (eq .CatalogAddedSource.String "verified")}}{{$badgeClass = "added-badge announcement"}}{{end}}
-      {{if .CatalogSourceURL.Valid}}
-      <a class="{{$badgeClass}}" href="{{.CatalogSourceURL.String}}" target="_blank" rel="noopener" title="{{.CatalogAddedTitle}}">{{.CatalogAddedShortLabel}}</a>
-      {{else}}
-      <span class="{{$badgeClass}}" title="{{.CatalogAddedTitle}}">{{.CatalogAddedShortLabel}}</span>
-      {{end}}
-      {{end}}
-    </div>
-    <div class="gbody">
-      <div class="gtitle"><a href="{{.RuStoreURL}}" target="_blank" rel="noopener">{{.Title}}</a></div>
-      <div class="gmeta">{{if .ReleaseYear}}{{.ReleaseYear}}{{end}}{{if .Platforms}}{{if .ReleaseYear}} · {{end}}{{.Platforms}}{{end}}</div>
-
-      {{$w := .OCPlayerWeight}}
-      <div class="verdict">
-        <div class="chip {{if .CriticAverage.Valid}}{{scoreClass .CriticAverage.Float64}}{{else}}na{{end}}">
-          <div class="n">{{if .CriticAverage.Valid}}{{printf "%.0f" .CriticAverage.Float64}}{{else}}—{{end}}</div>
-          <div class="l">Критики</div>
-        </div>
-        <div class="chip {{if .PlayerAverage.Valid}}{{scoreClass .PlayerAverage.Float64}}{{else}}na{{end}}">
-          <div class="n">{{if .PlayerAverage.Valid}}{{printf "%.0f" .PlayerAverage.Float64}}{{else}}—{{end}}</div>
-          <div class="l">Игроки</div>
-          {{with .OCWeightGlyph}}
-          <span class="w" title="{{if eq $w 1.0}}Голоса игроков OpenCritic учтены полностью{{else if eq $w 0.5}}Голоса игроков OpenCritic учтены с весом 0.5{{else}}Голоса игроков OpenCritic не учтены: меньше 20 оценок{{end}}">{{.}}</span>
-          {{end}}
-        </div>
-      </div>
-
-      <div class="sources">
-        <div class="sg sg-c">
-          <div class="scap">Критики</div>
-          <div class="cells">
-            <div class="src">
-              <div class="sl">MC</div>
-              <div class="sv">{{if and .Metacritic.Valid (gt .Metacritic.Int64 0)}}<a href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">{{.Metacritic.Int64}}</a>{{else}}<span class="na">—</span>{{end}}</div>
-            </div>
-            <div class="src">
-              <div class="sl">OC</div>
-              <div class="sv">{{if and .OpenCritic.Valid (gt .OpenCritic.Int64 0)}}<a href="{{.OpenCriticURL}}" target="_blank" rel="noopener" title="Открыть на OpenCritic">{{.OpenCritic.Int64}}</a>{{else}}<span class="na">—</span>{{end}}</div>
-            </div>
-          </div>
-        </div>
-        <div class="sg sg-p">
-          <div class="scap">Игроки</div>
-          <div class="cells">
-            <div class="src">
-              <div class="sl">MC</div>
-              <div class="sv">{{if and .MetacriticUser.Valid (gt .MetacriticUser.Int64 0)}}<a href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">{{.MetacriticUser.Int64}}</a>{{else}}<span class="na">—</span>{{end}}</div>
-              {{if .MetacriticUserCount.Valid}}<div class="sc">{{fmtCount .MetacriticUserCount.Int64}}</div>{{end}}
-            </div>
-            <div class="src">
-              <div class="sl">OC</div>
-              {{if and .OpenCriticPlayer.Valid (gt .OpenCriticPlayer.Int64 0)}}
-                {{if eq $w 1.0}}
-                <div class="sv"><a href="{{.OpenCriticURL}}" target="_blank" rel="noopener" title="Открыть на OpenCritic">{{.OpenCriticPlayer.Int64}}</a></div>
-                {{else if eq $w 0.5}}
-                <div class="sv half" title="Учтена с весом 0.5"><a href="{{.OpenCriticURL}}" target="_blank" rel="noopener">{{.OpenCriticPlayer.Int64}}</a></div>
-                {{else}}
-                <div class="sv"><span class="na" title="Не учтена: меньше 20 голосов">—</span></div>
-                {{end}}
-              {{else}}
-              <div class="sv"><span class="na">—</span></div>
-              {{end}}
-              {{if .OpenCriticPlayerCount.Valid}}<div class="sc">{{fmtCount .OpenCriticPlayerCount.Int64}}</div>{{end}}
-            </div>
-            <div class="src">
-              <div class="sl">HLTB</div>
-              <div class="sv">{{if and .HLTBRating.Valid (gt .HLTBRating.Int64 0)}}<a href="{{.HLTBURL}}" target="_blank" rel="noopener" title="Открыть на HowLongToBeat">{{.HLTBRating.Int64}}</a>{{else}}<span class="na">—</span>{{end}}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {{if .Genres}}
-      <div class="tags">{{range .Genres}}<span>{{.}}</span>{{end}}</div>
-      {{end}}
-    </div>
-    <div class="gtime"{{if .HLTBMainSec.Valid}} title="{{printf "%.0f" .HLTBHours}} ч{{if hltbOver .HLTBHours}} — дольше шкалы 60 ч{{else}} по шкале 0–60 ч{{end}}"{{end}}>
-      {{if .HLTBMainSec.Valid}}
-      <a class="h" href="{{.HLTBURL}}" target="_blank" rel="noopener">{{printf "%.0f" .HLTBHours}} <small>ч</small></a>
-      <div class="ruler"><i style="width:{{hltbPct .HLTBHours}}%"></i></div>
-      {{if hltbOver .HLTBHours}}<span class="omark">▸</span>{{end}}
-      {{else}}
-      <span class="h"><span class="na">—</span></span>
-      <div class="ruler"></div>
-      {{end}}
-    </div>
-  </div>
-{{end}}
-{{end}}
+  <button type="submit">Применить</button>
+  <a class="reset" href="/">Сбросить</a>
+</form>
 
 {{if .Result.Games}}
-<div class="catalog">
-  <div class="grid" data-start="{{mul (add .Result.Page -1) .Result.PageSize}}" data-next="{{.NextOffset}}" data-psize="{{.Result.PageSize}}" data-total="{{.Result.Total}}">{{template "cards" .}}</div>
-  {{if .Buckets}}
-  <nav class="alpha" aria-label="Быстрый переход по алфавиту">
-    {{$bq := .BaseQuery}}
-    {{range .Buckets}}<a class="achip" data-offset="{{.Offset}}" href="?{{$bq}}&offset={{.Offset}}">{{.Label}}</a>{{end}}
-  </nav>
+<div class="grid">
+  {{range .Result.Games}}
+  <div class="card">
+    {{if .ImageURL}}<img loading="lazy" src="{{.ImageURL}}" alt="">{{end}}
+    <div class="body">
+      <div class="title"><a href="{{.StoreURL}}" target="_blank" rel="noopener">{{.Title}}</a></div>
+      <div class="meta">{{if .ReleaseYear}}{{.ReleaseYear}}{{end}}{{if .Platforms}} · {{.Platforms}}{{end}}</div>
+      <div class="genres">{{range .Genres}}<span>{{.}}</span>{{end}}</div>
+      <div class="scores">
+        <div class="score {{if not .Metacritic.Valid}}na{{end}}">
+          <div class="v">{{if .Metacritic.Valid}}{{.Metacritic.Int64}}{{else}}—{{end}}</div>
+          <div class="l">Metacritic</div>
+        </div>
+        <div class="score {{if not .OpenCritic.Valid}}na{{end}}">
+          <div class="v">{{if .OpenCritic.Valid}}{{.OpenCritic.Int64}}{{else}}—{{end}}</div>
+          <div class="l">OpenCritic</div>
+        </div>
+        <div class="score {{if not .Average.Valid}}na{{end}}">
+          <div class="v">{{if .Average.Valid}}{{printf "%.1f" .Average.Float64}}{{else}}—{{end}}</div>
+          <div class="l">Среднее</div>
+        </div>
+      </div>
+    </div>
+  </div>
   {{end}}
 </div>
-<div id="feedEnd" class="feed-end" aria-hidden="true"></div>
 
-{{/* Ссылка рендерится всегда: прыжок по индексу может вернуть ленту в середину
-     списка, и подгрузку нужно уметь включать обратно. Скрыта, пока грузить нечего. */}}
-<div class="morewrap">
-  <a class="btn more" id="moreLink" {{if not .HasNext}}hidden{{end}} href="?{{.BaseQuery}}&offset={{.NextOffset}}">Показать ещё</a>
-</div>
-<div class="pcount">Показано <b id="shownCount">{{len .Result.Games}}</b> из <b id="totalCount">{{.Result.Total}}</b> игр</div>
-
+<nav class="pager">
+  {{if .HasPrev}}<a href="?{{.BaseQuery}}&page={{add .Result.Page -1}}">‹ Назад</a>{{else}}<span class="disabled">‹ Назад</span>{{end}}
+  {{$cur := .Result.Page}}{{$bq := .BaseQuery}}
+  {{range .Pages}}
+    {{if eq . $cur}}<span class="cur">{{.}}</span>{{else}}<a href="?{{$bq}}&page={{.}}">{{.}}</a>{{end}}
+  {{end}}
+  {{if .HasNext}}<a href="?{{.BaseQuery}}&page={{add .Result.Page 1}}">Вперёд ›</a>{{else}}<span class="disabled">Вперёд ›</span>{{end}}
+</nav>
 {{else}}
-<div class="empty">
-  {{if .FavoritesOnly}}
-  <div class="big">В избранном ничего не найдено</div>
-  <p>Добавьте игры сердцем в общем каталоге или сбросьте фильтры этого раздела.</p>
-  <a class="reset" href="{{.CatalogPath}}">Перейти в каталог</a>
-  {{else}}
-  <div class="big">По этим фильтрам ничего не нашлось</div>
-  <p>Расширьте диапазон оценок или времени прохождения, либо уберите ограничение по русскому языку.</p>
-  {{end}}
-  <a class="reset" href="?">Сбросить все фильтры</a>
-</div>
+<div class="empty">Ничего не найдено по выбранным фильтрам.</div>
 {{end}}
-</main>
-</form>
-</div>
 
-<script>
-/* Двухползунковые слайдеры: заливка выбранного диапазона и живое значение */
-document.querySelectorAll('.range').forEach(function (r) {
-  var lo = r.querySelector('.lo'),
-      hi = r.querySelector('.hi'),
-      fill = r.querySelector('.fill'),
-      out = document.querySelector('[data-out="' + r.dataset.name + '"]'),
-      min = +r.dataset.min, max = +r.dataset.max;
-  function sync(src) {
-    var a = +lo.value, b = +hi.value;
-    if (a > b) { if (src === lo) hi.value = a; else lo.value = b; a = +lo.value; b = +hi.value; }
-    fill.style.left = ((a - min) / (max - min) * 100) + '%';
-    fill.style.right = (100 - (b - min) / (max - min) * 100) + '%';
-    if (out) out.textContent = a + '–' + b;
-  }
-  lo.addEventListener('input', function () { sync(lo); });
-  hi.addEventListener('input', function () { sync(hi); });
-  sync();
-});
-
-/* Слайдеры на краях шкалы не отправляем: чистый URL (сервер трактует край так же) */
-document.querySelector('form.filters').addEventListener('submit', function () {
-  document.querySelectorAll('.range').forEach(function (r) {
-    var lo = r.querySelector('.lo'), hi = r.querySelector('.hi');
-    if (+lo.value === +lo.min) lo.disabled = true;
-    if (+hi.value === +hi.max) hi.disabled = true;
-  });
-});
-
-/* Переключатель светлой/тёмной темы */
-(function () {
-  var root = document.documentElement,
-      btn = document.getElementById('themeToggle');
-  function cur() {
-    return root.dataset.theme ||
-      (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  }
-  function paint() { btn.textContent = cur() === 'dark' ? '☀' : '☾'; }
-  try { var s = localStorage.getItem('theme'); if (s) root.dataset.theme = s; } catch (e) {}
-  btn.addEventListener('click', function () {
-    var next = cur() === 'dark' ? 'light' : 'dark';
-    root.dataset.theme = next;
-    try { localStorage.setItem('theme', next); } catch (e) {}
-    paint();
-  });
-  paint();
-})();
-
-/* Закрывать справку по клику мимо неё */
-document.addEventListener('click', function (e) {
-  document.querySelectorAll('details.help[open]').forEach(function (d) {
-    if (!d.contains(e.target)) d.removeAttribute('open');
-  });
-});
-
-/* Добавление и удаление игр из персонального избранного */
-(function () {
-  var api = document.body.dataset.favoriteApi;
-  var csrf = document.body.dataset.csrfToken;
-  var favoritesPage = document.body.dataset.favoritesPage === 'true';
-  if (!api || !csrf) return;
-  document.addEventListener('click', function (event) {
-    var button = event.target.closest('.fav-toggle');
-    if (!button || button.disabled) return;
-    var wasFavorite = button.getAttribute('aria-pressed') === 'true';
-    var query = new URLSearchParams({game_id: button.dataset.gameId});
-    button.disabled = true;
-    fetch(api + '?' + query.toString(), {
-      method: wasFavorite ? 'DELETE' : 'POST',
-      credentials: 'same-origin',
-      headers: {'X-CSRF-Token': csrf, 'Accept': 'application/json'}
-    }).then(function (response) {
-      if (!response.ok) throw new Error(response.status);
-      return response.json();
-    }).then(function (result) {
-      if (favoritesPage && !result.favorite) {
-        location.reload();
-        return;
-      }
-      button.classList.toggle('on', result.favorite);
-      button.setAttribute('aria-pressed', result.favorite ? 'true' : 'false');
-      button.setAttribute('aria-label', result.favorite ? 'Удалить из избранного' : 'Добавить в избранное');
-      button.querySelector('[aria-hidden]').textContent = result.favorite ? '♥' : '♡';
-      button.disabled = false;
-    }).catch(function () {
-      button.disabled = false;
-      window.alert('Не удалось изменить избранное. Попробуйте ещё раз.');
-    });
-  });
-})();
-
-/* Бесконечная лента и буквенный индекс */
-(function () {
-  var grid = document.querySelector('.grid');
-  var more = document.getElementById('moreLink');
-  var shown = document.getElementById('shownCount');
-  if (!grid) return;
-  var psize = +grid.dataset.psize || 25;
-  var total = +grid.dataset.total || 0;
-  var start = +grid.dataset.start || 0; // начало загруженного окна
-  var inflight = false;   // запрос вниз/прыжок
-  var upInflight = false; // запрос вверх
-  var gen = 0;            // поколение ленты: прыжок обесценивает старые ответы
-  var smooth = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
-
-  function setOffsetParam(url, off) {
-    return url.replace(/([?&])offset=\d+/, '$1offset=' + off);
-  }
-  function updateCount() {
-    if (shown) shown.textContent = grid.children.length;
-  }
-  function fetchCards(off) {
-    var base = more ? more.href : (location.pathname + location.search);
-    var url = /[?&]offset=/.test(base)
-      ? setOffsetParam(base, off)
-      : base + (base.indexOf('?') < 0 ? '?' : '&') + 'offset=' + off;
-    return fetch(url + '&fragment=cards').then(function (r) {
-      if (!r.ok) throw new Error(r.status);
-      total = +r.headers.get('X-Total') || total;
-      return r.text();
-    }).then(function (html) {
-      var t = document.createElement('template');
-      t.innerHTML = html;
-      return t.content.querySelectorAll('.gcard');
-    });
-  }
-  function appendCards(cards) {
-    for (var i = 0; i < cards.length; i++) grid.appendChild(cards[i]);
-    updateCount();
-  }
-  function syncURL(off) {
-    var u = new URL(location.href);
-    u.searchParams.set('offset', off);
-    history.replaceState(null, '', u);
-  }
-  /* Конец списка — свойство позиции, а не страницы: после прыжка по индексу
-     в середину подгрузку нужно уметь включать обратно, поэтому ссылку прячем,
-     а не удаляем. */
-  function setMore(next) {
-    if (!more) return;
-    more.href = setOffsetParam(more.href, next);
-    more.hidden = next >= total;
-  }
-
-  /* Подгрузка следующей партии, когда «Показать ещё» приближается к вьюпорту */
-  function loadNext() {
-    if (inflight || !more || more.hidden) return;
-    inflight = true;
-    var g = gen;
-    var next = +grid.dataset.next;
-    fetchCards(next).then(function (cards) {
-      if (g !== gen) { inflight = false; return; } // лента перестроена прыжком
-      appendCards(cards);
-      var after = next + cards.length;
-      grid.dataset.next = after;
-      setMore(cards.length ? after : total); // пустой ответ — считаем концом
-      syncURL(start);
-      inflight = false;
-    }).catch(function () { inflight = false; }); // ссылка остаётся — ручной retry
-  }
-  var feedEnd = document.getElementById('feedEnd');
-  if (more && feedEnd) {
-    new IntersectionObserver(function (es) {
-      if (es[0].isIntersecting) loadNext();
-    }, { rootMargin: '1200px 0px' }).observe(feedEnd);
-    more.addEventListener('click', function (e) { e.preventDefault(); loadNext(); });
-  }
-
-  /* Догрузка предыдущей партии при прокрутке к верху загруженного окна.
-     Вставка контента над вьюпортом сдвигает страницу — компенсируем scrollBy
-     на разницу высоты сетки (нативный anchoring выключен в CSS). */
-  function loadPrev() {
-    if (upInflight || start <= 0) return;
-    upInflight = true;
-    var g = gen;
-    var prev = Math.max(0, start - psize);
-    fetchCards(prev).then(function (cards) {
-      if (g !== gen) { upInflight = false; return; }
-      var h0 = grid.offsetHeight;
-      for (var i = cards.length - 1; i >= 0; i--) grid.insertBefore(cards[i], grid.firstChild);
-      window.scrollBy(0, grid.offsetHeight - h0);
-      updateCount();
-      start = prev;
-      grid.dataset.start = start;
-      syncURL(start);
-      upInflight = false;
-    }).catch(function () { upInflight = false; });
-  }
-  var topGuard = document.createElement('div');
-  var catalog = grid.closest('.catalog') || grid;
-  catalog.parentNode.insertBefore(topGuard, catalog);
-  new IntersectionObserver(function (es) {
-    if (es[0].isIntersecting) loadPrev();
-  }, { rootMargin: '400px' }).observe(topGuard);
-
-  /* Прыжок по букве: скролл, если карточка в DOM; иначе перестройка ленты */
-  var alpha = document.querySelector('.alpha');
-  if (alpha) alpha.addEventListener('click', function (e) {
-    var chip = e.target.closest('.achip');
-    if (!chip) return;
-    e.preventDefault();
-    var off = +chip.dataset.offset;
-    var target = grid.querySelector('[data-i="' + off + '"]');
-    if (target) {
-      target.scrollIntoView({ behavior: smooth, block: 'start' });
-      syncURL(off - off % psize);
-      return;
-    }
-    if (inflight) return;
-    inflight = true;
-    gen++; // обесценить ответы старой позиции ленты
-    var g = gen;
-    var aligned = off - off % psize;
-    fetchCards(aligned).then(function (cards) {
-      if (g !== gen) { inflight = false; return; }
-      grid.innerHTML = '';
-      appendCards(cards);
-      var after = aligned + cards.length;
-      grid.dataset.next = after;
-      start = aligned;
-      grid.dataset.start = start;
-      setMore(after);
-      syncURL(aligned);
-      var t2 = grid.querySelector('[data-i="' + off + '"]');
-      if (t2) t2.scrollIntoView({ behavior: smooth, block: 'start' });
-      inflight = false;
-    }).catch(function () { inflight = false; });
-  });
-
-  /* Подсветка активной буквы по первой видимой карточке */
-  var chips = alpha ? Array.prototype.slice.call(alpha.querySelectorAll('.achip')) : [];
-  function markActive() {
-    if (!chips.length) return;
-    var cards = grid.children;
-    var topCard = null;
-    for (var i = 0; i < cards.length; i++) {
-      if (cards[i].getBoundingClientRect().bottom > 0) { topCard = cards[i]; break; }
-    }
-    if (!topCard) return;
-    var idx = +topCard.dataset.i;
-    var active = null;
-    for (var j = 0; j < chips.length; j++) {
-      if (+chips[j].dataset.offset <= idx) active = chips[j];
-    }
-    chips.forEach(function (c) { c.classList.toggle('on', c === active); });
-  }
-  var ticking = false;
-  addEventListener('scroll', function () {
-    if (ticking) return;
-    ticking = true;
-    requestAnimationFrame(function () { markActive(); ticking = false; });
-  }, { passive: true });
-  markActive();
-})();
-</script>
 </body>
 </html>

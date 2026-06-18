@@ -26,8 +26,3 @@ func main() {
 		os.Exit(2)
 	}
 }
-
-func runServe(args []string) error {
-	fmt.Println("serve: not implemented yet")
-	return nil
-}
