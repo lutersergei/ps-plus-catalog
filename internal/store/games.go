@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"strings"
+	"time"
 )
 
 // GameRow — данные каталога одной игры для записи в БД (без оценок).
@@ -33,6 +34,45 @@ ON CONFLICT(id) DO UPDATE SET
   store_url=excluded.store_url`,
 		g.ID, g.Title, g.TitleEn, g.ReleaseYear,
 		strings.Join(g.Platforms, ", "), g.ImageURL, g.StoreURL)
+	return err
+}
+
+// ScoreTarget — игра, которой нужны/устарели оценки.
+type ScoreTarget struct {
+	ID      string
+	Title   string
+	TitleEn string
+}
+
+// GamesNeedingScores возвращает игры без оценок или с устаревшими (раньше
+// staleBefore). Игры с уже свежими scores_updated_at пропускаются.
+func GamesNeedingScores(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, error) {
+	rows, err := db.Query(`
+SELECT id, title, COALESCE(title_en, title)
+FROM games
+WHERE scores_updated_at IS NULL OR scores_updated_at < ?
+ORDER BY title`, staleBefore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ScoreTarget
+	for rows.Next() {
+		var t ScoreTarget
+		if err := rows.Scan(&t.ID, &t.Title, &t.TitleEn); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// UpdateScores записывает оценки игры и помечает время обновления.
+func UpdateScores(db *sql.DB, id string, mc, oc sql.NullInt64, avg sql.NullFloat64) error {
+	_, err := db.Exec(`
+UPDATE games
+SET metacritic_score = ?, opencritic_score = ?, average_score = ?, scores_updated_at = CURRENT_TIMESTAMP
+WHERE id = ?`, mc, oc, avg, id)
 	return err
 }
 

@@ -24,7 +24,7 @@ type ocSearchResult struct {
 // OpenCriticScore ищет игру по названию и возвращает её Top Critic Score.
 // found=false, если совпадений нет. apiKey — ключ RapidAPI.
 func OpenCriticScore(ctx context.Context, c *http.Client, apiKey, title string) (score int, found bool, err error) {
-	results, err := ocSearch(ctx, c, apiKey, title)
+	results, err := ocSearch(ctx, c, apiKey, CleanTitle(title))
 	if err != nil {
 		return 0, false, err
 	}

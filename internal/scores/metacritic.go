@@ -18,7 +18,7 @@ var ldJSONRe = regexp.MustCompile(`(?s)<script type="application/ld\+json">(.*?)
 // MetacriticScore возвращает Metascore игры по её английскому названию.
 // found=false, если страница недоступна, игра не найдена или нет рецензий.
 func MetacriticScore(ctx context.Context, c *http.Client, titleEn string) (score int, found bool, err error) {
-	url := "https://www.metacritic.com/game/" + Slugify(titleEn) + "/"
+	url := "https://www.metacritic.com/game/" + Slugify(CleanTitle(titleEn)) + "/"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, false, err
