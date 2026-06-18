@@ -1,4 +1,4 @@
-module github.com/lutersergei/ps-plus-catalog
+module ps-extra
 
 go 1.25.11
 

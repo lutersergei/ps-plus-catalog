@@ -1,11 +1,3 @@
 /ps-extra
-.DS_Store
 *.db
 *.db-*
-*.db.bak
-/vendor/
-/.idea/
-/.env
-/data/
-/docs/
-/.superpowers/
