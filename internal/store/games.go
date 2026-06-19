@@ -95,6 +95,23 @@ func UpdateOpenCritic(db *sql.DB, id string, oc sql.NullInt64) error {
 	return recomputeAverage(db, id)
 }
 
+// ResetMissingChecks сбрасывает отметки проверки у игр без соответствующей оценки,
+// чтобы их перепроверили в следующем sync (например, после улучшения матчинга).
+// Возвращает число затронутых строк по каждому источнику.
+func ResetMissingChecks(db *sql.DB) (mc, oc int64, err error) {
+	r1, err := db.Exec(`UPDATE games SET mc_checked_at = NULL WHERE metacritic_score IS NULL`)
+	if err != nil {
+		return 0, 0, err
+	}
+	r2, err := db.Exec(`UPDATE games SET oc_checked_at = NULL WHERE opencritic_score IS NULL`)
+	if err != nil {
+		return 0, 0, err
+	}
+	mc, _ = r1.RowsAffected()
+	oc, _ = r2.RowsAffected()
+	return mc, oc, nil
+}
+
 // recomputeAverage пересчитывает average_score из текущих значений оценок строки.
 func recomputeAverage(db *sql.DB, id string) error {
 	_, err := db.Exec(`

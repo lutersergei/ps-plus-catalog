@@ -21,6 +21,7 @@ func runSync(args []string) error {
 	skipScores := fs.Bool("skip-scores", false, "только обновить каталог, без оценок")
 	maxOC := fs.Int("max-oc", 25, "максимум обращений к OpenCritic за запуск (лимит плана)")
 	refreshDays := fs.Int("refresh-days", 30, "не перезапрашивать оценки свежее N дней")
+	recheckMissing := fs.Bool("recheck-missing", false, "сбросить отметки проверки у игр без оценки и перепроверить их")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -30,6 +31,14 @@ func runSync(args []string) error {
 		return err
 	}
 	defer db.Close()
+
+	if *recheckMissing {
+		mc, oc, err := store.ResetMissingChecks(db)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("сброшены отметки проверки: Metacritic %d, OpenCritic %d игр — будут перепроверены\n", mc, oc)
+	}
 
 	ctx := context.Background()
 	client := &http.Client{Timeout: 30 * time.Second}
