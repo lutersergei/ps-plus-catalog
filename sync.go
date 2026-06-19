@@ -70,15 +70,20 @@ func syncHLTB(ctx context.Context, db *sql.DB, client *http.Client, refreshDays 
 	session := scores.NewHLTBSession(client)
 	for i, t := range targets {
 		res, found, err := session.Lookup(ctx, t.TitleEn)
-		if err != nil {
+		switch {
+		case err != nil:
 			// сбой/блок — НЕ помечаем проверенным, повторим в следующий запуск
 			log.Printf("[hltb] %s: %v (повторим позже)", t.Title, err)
-		} else {
+		case !found:
+			// пустой ответ: троттл или игры нет на HLTB. Не помечаем проверенной,
+			// чтобы троттл-промахи подобрались в следующий запуск.
+			log.Printf("[hltb] %s: совпадений нет (повторим позже)", t.Title)
+		default:
 			var mainExtra, rating sql.NullInt64
-			if found && res.MainExtraSeconds > 0 {
+			if res.MainExtraSeconds > 0 {
 				mainExtra = sql.NullInt64{Int64: int64(res.MainExtraSeconds), Valid: true}
 			}
-			if found && res.Rating > 0 {
+			if res.Rating > 0 {
 				rating = sql.NullInt64{Int64: int64(res.Rating), Valid: true}
 			}
 			if err := store.UpdateHLTB(db, t.ID, mainExtra, rating); err != nil {
@@ -88,7 +93,7 @@ func syncHLTB(ctx context.Context, db *sql.DB, client *http.Client, refreshDays 
 		if (i+1)%25 == 0 {
 			fmt.Printf("  HowLongToBeat %d/%d\n", i+1, len(targets))
 		}
-		time.Sleep(500 * time.Millisecond) // вежливо к howlongtobeat.com
+		time.Sleep(1300 * time.Millisecond) // HLTB троттлит частые запросы (пустой ответ) — держим паузу побольше
 	}
 	return nil
 }
