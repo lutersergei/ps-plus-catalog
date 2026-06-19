@@ -52,7 +52,10 @@ func runSync(args []string) error {
 	if err := syncScores(ctx, db, client, *maxOC, *refreshDays); err != nil {
 		return err
 	}
-	return syncHLTB(ctx, db, client, *refreshDays)
+	if err := syncHLTB(ctx, db, client, *refreshDays); err != nil {
+		return err
+	}
+	return store.RecomputeAllAverages(db)
 }
 
 // syncHLTB собирает время Main+Sides и рейтинг с HowLongToBeat для всех игр без

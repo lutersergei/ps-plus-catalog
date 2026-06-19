@@ -85,10 +85,12 @@ func GamesNeedingHLTB(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, error) 
 // UpdateHLTB записывает время Main+Sides (сек) и рейтинг HLTB (0–100), помечает
 // время проверки. Невалидные значения (Valid=false) означают «нет данных».
 func UpdateHLTB(db *sql.DB, id string, mainExtra, rating sql.NullInt64) error {
-	_, err := db.Exec(`
+	if _, err := db.Exec(`
 UPDATE games SET hltb_main_extra = ?, hltb_rating = ?, hltb_checked_at = CURRENT_TIMESTAMP
-WHERE id = ?`, mainExtra, rating, id)
-	return err
+WHERE id = ?`, mainExtra, rating, id); err != nil {
+		return err
+	}
+	return recomputeAverage(db, id)
 }
 
 // UpdateMetacritic записывает оценку Metacritic (или NULL, если не найдена),
@@ -129,18 +131,25 @@ func ResetMissingChecks(db *sql.DB) (mc, oc int64, err error) {
 	return mc, oc, nil
 }
 
+// averageExpr — выражение среднего по доступным оценкам: Metacritic, OpenCritic
+// и рейтинг HLTB (все в шкале 0–100). NULL, если нет ни одной.
+const averageExpr = `CASE
+  WHEN ((metacritic_score IS NOT NULL) + (opencritic_score IS NOT NULL) + (hltb_rating IS NOT NULL)) = 0 THEN NULL
+  ELSE ROUND(
+    (COALESCE(metacritic_score,0) + COALESCE(opencritic_score,0) + COALESCE(hltb_rating,0)) * 1.0
+    / ((metacritic_score IS NOT NULL) + (opencritic_score IS NOT NULL) + (hltb_rating IS NOT NULL)), 1)
+END`
+
 // recomputeAverage пересчитывает average_score из текущих значений оценок строки.
 func recomputeAverage(db *sql.DB, id string) error {
-	_, err := db.Exec(`
-UPDATE games SET average_score = (
-  CASE
-    WHEN metacritic_score IS NOT NULL AND opencritic_score IS NOT NULL
-      THEN ROUND((metacritic_score + opencritic_score) / 2.0, 1)
-    WHEN metacritic_score IS NOT NULL THEN metacritic_score
-    WHEN opencritic_score IS NOT NULL THEN opencritic_score
-    ELSE NULL
-  END
-) WHERE id = ?`, id)
+	_, err := db.Exec(`UPDATE games SET average_score = (`+averageExpr+`) WHERE id = ?`, id)
+	return err
+}
+
+// RecomputeAllAverages пересчитывает среднее у всех игр (после изменения формулы
+// или массового обновления оценок).
+func RecomputeAllAverages(db *sql.DB) error {
+	_, err := db.Exec(`UPDATE games SET average_score = (` + averageExpr + `)`)
 	return err
 }
 
