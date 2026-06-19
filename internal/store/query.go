@@ -8,6 +8,7 @@ import (
 
 // ListParams — параметры выборки игр для страницы.
 type ListParams struct {
+	Search        string   // поиск по названию (подстрока; пусто = все)
 	Genres        []string // фильтр по жанрам (OR; пусто = все)
 	YearFrom      int      // нижняя граница года выпуска (0 = не задана)
 	YearTo        int      // верхняя граница года выпуска (0 = не задана)
@@ -62,6 +63,12 @@ var sortColumns = map[string]string{
 	"hltbmain": "hltb_main_extra",
 }
 
+// likeEscape экранирует спецсимволы LIKE (% _ \) во вводе пользователя.
+func likeEscape(s string) string {
+	r := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return r.Replace(s)
+}
+
 // ListGames возвращает отфильтрованную, отсортированную и постранично нарезанную
 // выборку игр.
 func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
@@ -74,6 +81,13 @@ func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
 
 	var where []string
 	var args []any
+
+	// Поиск по названию (подстрока в локализованном и английском названии)
+	if s := strings.TrimSpace(p.Search); s != "" {
+		like := "%" + likeEscape(s) + "%"
+		where = append(where, `(title LIKE ? ESCAPE '\' OR COALESCE(title_en,'') LIKE ? ESCAPE '\')`)
+		args = append(args, like, like)
+	}
 
 	// Фильтр по году: диапазон
 	if p.YearFrom > 0 {

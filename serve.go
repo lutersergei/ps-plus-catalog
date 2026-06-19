@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"ps-extra/internal/store"
 )
@@ -76,6 +77,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 	}
 
 	p := store.ListParams{
+		Search:        strings.TrimSpace(q.Get("q")),
 		Genres:        genres,
 		YearFrom:      atoiDefault(q.Get("year_from"), 0),
 		YearTo:        atoiDefault(q.Get("year_to"), 0),
@@ -107,6 +109,9 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 
 	// BaseQuery — query без page, для ссылок пагинации
 	base := url.Values{}
+	if p.Search != "" {
+		base.Set("q", p.Search)
+	}
 	if p.YearFrom > 0 {
 		base.Set("year_from", strconv.Itoa(p.YearFrom))
 	}

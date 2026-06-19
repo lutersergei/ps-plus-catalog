@@ -14,9 +14,10 @@
   form.filters { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:16px 24px; background:#121a2c; }
   .field { display:flex; flex-direction:column; gap:4px; }
   .field label { font-size:12px; color:var(--muted); }
-  select, input[type=number], button { background:var(--card); color:var(--text); border:1px solid #2c3654; border-radius:8px; padding:8px 10px; font-size:14px; }
+  select, input[type=number], input[type=text], button { background:var(--card); color:var(--text); border:1px solid #2c3654; border-radius:8px; padding:8px 10px; font-size:14px; }
   input[type=number] { width:80px; }
-  input[type=number]::placeholder { color:var(--muted); }
+  input.search { width:200px; }
+  input::placeholder { color:var(--muted); }
   button { background:var(--accent); border-color:var(--accent); cursor:pointer; }
   a.reset { color:var(--muted); font-size:13px; align-self:flex-end; padding-bottom:9px; }
   /* Жанр: компактный выпадающий мультивыбор на <details> */
@@ -58,6 +59,11 @@
 </header>
 
 <form class="filters" method="get" action="/">
+  <div class="field">
+    <label>Поиск по названию</label>
+    <input type="text" name="q" value="{{.Params.Search}}" placeholder="например, spider" class="search">
+  </div>
+
   <div class="field">
     <label>Год от / до</label>
     <div class="field-row">
