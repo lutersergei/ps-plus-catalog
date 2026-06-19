@@ -1,3 +1,5 @@
 /ps-extra
 *.db
 *.db-*
+/vendor/
+/.idea/
