@@ -20,6 +20,7 @@ func runSync(args []string) error {
 	dbPath := fs.String("db", "ps-extra.db", "путь к файлу SQLite")
 	skipScores := fs.Bool("skip-scores", false, "только обновить каталог, без оценок")
 	maxOC := fs.Int("max-oc", 25, "максимум обращений к OpenCritic за запуск (лимит плана)")
+	maxHLTB := fs.Int("max-hltb", 0, "максимум игр для HowLongToBeat за запуск (0 = без ограничения; HLTB троттлит большие пачки)")
 	refreshDays := fs.Int("refresh-days", 30, "не перезапрашивать оценки свежее N дней")
 	recheckMissing := fs.Bool("recheck-missing", false, "сбросить отметки проверки у игр без оценки и перепроверить их")
 	if err := fs.Parse(args); err != nil {
@@ -52,7 +53,7 @@ func runSync(args []string) error {
 	if err := syncScores(ctx, db, client, *maxOC, *refreshDays); err != nil {
 		return err
 	}
-	if err := syncHLTB(ctx, db, client, *refreshDays); err != nil {
+	if err := syncHLTB(ctx, db, client, *refreshDays, *maxHLTB); err != nil {
 		return err
 	}
 	return store.RecomputeAllAverages(db)
@@ -60,11 +61,14 @@ func runSync(args []string) error {
 
 // syncHLTB собирает время Main+Sides и рейтинг с HowLongToBeat для всех игр без
 // свежей проверки (источник бесплатный, без дневного лимита).
-func syncHLTB(ctx context.Context, db *sql.DB, client *http.Client, refreshDays int) error {
+func syncHLTB(ctx context.Context, db *sql.DB, client *http.Client, refreshDays, maxHLTB int) error {
 	staleBefore := time.Now().AddDate(0, 0, -refreshDays)
 	targets, err := store.GamesNeedingHLTB(db, staleBefore)
 	if err != nil {
 		return err
+	}
+	if maxHLTB > 0 && len(targets) > maxHLTB {
+		targets = targets[:maxHLTB]
 	}
 	fmt.Printf("HowLongToBeat — игр к проверке: %d\n", len(targets))
 	session := scores.NewHLTBSession(client)
