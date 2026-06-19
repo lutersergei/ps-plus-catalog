@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS games (
 	metacritic_score  INTEGER,
 	opencritic_score  INTEGER,
 	average_score     REAL,
-	scores_updated_at TIMESTAMP
+	mc_checked_at     TIMESTAMP,
+	oc_checked_at     TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS game_genres (
 	game_id TEXT NOT NULL,

@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"os"
 	"time"
@@ -68,74 +67,61 @@ func syncCatalog(ctx context.Context, db *sql.DB, client *http.Client) error {
 	return nil
 }
 
-// syncScores собирает Metacritic (всем) и OpenCritic (в пределах maxOC) для игр
-// без свежих оценок. Ошибки провайдеров логируются, цикл не прерывается.
+// syncScores собирает Metacritic для ВСЕХ игр без свежей проверки (источник
+// бесплатный) и OpenCritic — порциями не больше maxOC за запуск (лимит плана).
+// Источники независимы: отсутствие ключа не мешает собрать все Metacritic.
+// Ошибки провайдеров логируются, цикл не прерывается.
 func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, refreshDays int) error {
-	apiKey := os.Getenv("OPENCRITIC_API_KEY")
-	if apiKey == "" {
-		log.Println("OPENCRITIC_API_KEY не задан — OpenCritic пропускается, только Metacritic")
-	}
-
 	staleBefore := time.Now().AddDate(0, 0, -refreshDays)
-	targets, err := store.GamesNeedingScores(db, staleBefore)
+
+	// --- Metacritic: все нуждающиеся игры ---
+	mcTargets, err := store.GamesNeedingMetacritic(db, staleBefore)
 	if err != nil {
 		return err
 	}
-
-	// OpenCritic — бутылочное горлышко (лимит плана). При наличии ключа обрабатываем
-	// за запуск не больше maxOC игр целиком; следующий запуск возьмёт остальные.
-	useOC := apiKey != ""
-	if useOC && len(targets) > maxOC {
-		targets = targets[:maxOC]
-	}
-	fmt.Printf("игр к обработке за этот запуск: %d\n", len(targets))
-
-	ocUsed := 0
-	for i, t := range targets {
-		var mc, oc sql.NullInt64
-
+	fmt.Printf("Metacritic — игр к проверке: %d\n", len(mcTargets))
+	for i, t := range mcTargets {
+		var mc sql.NullInt64
 		if score, found, err := scores.MetacriticScore(ctx, client, t.TitleEn); err != nil {
 			log.Printf("[mc] %s: %v", t.Title, err)
 		} else if found {
 			mc = sql.NullInt64{Int64: int64(score), Valid: true}
 		}
-
-		if useOC {
-			ocUsed++
-			if score, found, err := scores.OpenCriticScore(ctx, client, apiKey, t.TitleEn); err != nil {
-				log.Printf("[oc] %s: %v", t.Title, err)
-			} else if found {
-				oc = sql.NullInt64{Int64: int64(score), Valid: true}
-			}
+		if err := store.UpdateMetacritic(db, t.ID, mc); err != nil {
+			return fmt.Errorf("update mc %s: %w", t.ID, err)
 		}
-
-		if err := store.UpdateScores(db, t.ID, mc, oc, computeAverage(mc, oc)); err != nil {
-			return fmt.Errorf("update scores %s: %w", t.ID, err)
+		if (i+1)%25 == 0 {
+			fmt.Printf("  Metacritic %d/%d\n", i+1, len(mcTargets))
 		}
-
-		if (i+1)%10 == 0 {
-			fmt.Printf("  обработано %d/%d (OpenCritic использовано %d)\n", i+1, len(targets), ocUsed)
-		}
-		time.Sleep(700 * time.Millisecond) // вежливо к Metacritic, ≤4 req/s к OpenCritic
+		time.Sleep(700 * time.Millisecond) // вежливо к metacritic.com
 	}
-	fmt.Printf("готово: обработано %d игр, OpenCritic-запросов: %d\n", len(targets), ocUsed)
+
+	// --- OpenCritic: только при наличии ключа, не больше maxOC за запуск ---
+	apiKey := os.Getenv("OPENCRITIC_API_KEY")
+	if apiKey == "" {
+		fmt.Println("OPENCRITIC_API_KEY не задан — OpenCritic пропущен (запустите с ключом, чтобы добрать)")
+		return nil
+	}
+	ocTargets, err := store.GamesNeedingOpenCritic(db, staleBefore)
+	if err != nil {
+		return err
+	}
+	if len(ocTargets) > maxOC {
+		ocTargets = ocTargets[:maxOC]
+	}
+	fmt.Printf("OpenCritic — игр за этот запуск: %d (осталось добрать в следующие дни)\n", len(ocTargets))
+	for i, t := range ocTargets {
+		var oc sql.NullInt64
+		if score, found, err := scores.OpenCriticScore(ctx, client, apiKey, t.TitleEn); err != nil {
+			log.Printf("[oc] %s: %v", t.Title, err)
+		} else if found {
+			oc = sql.NullInt64{Int64: int64(score), Valid: true}
+		}
+		if err := store.UpdateOpenCritic(db, t.ID, oc); err != nil {
+			return fmt.Errorf("update oc %s: %w", t.ID, err)
+		}
+		fmt.Printf("  OpenCritic %d/%d: %s\n", i+1, len(ocTargets), t.Title)
+		time.Sleep(300 * time.Millisecond) // ≤4 req/s
+	}
 	return nil
-}
-
-// computeAverage считает среднее из доступных оценок (обе 0–100); NULL, если нет ни одной.
-func computeAverage(mc, oc sql.NullInt64) sql.NullFloat64 {
-	var sum float64
-	var n int
-	if mc.Valid {
-		sum += float64(mc.Int64)
-		n++
-	}
-	if oc.Valid {
-		sum += float64(oc.Int64)
-		n++
-	}
-	if n == 0 {
-		return sql.NullFloat64{}
-	}
-	return sql.NullFloat64{Float64: math.Round(sum/float64(n)*10) / 10, Valid: true}
 }

@@ -44,13 +44,13 @@ type ScoreTarget struct {
 	TitleEn string
 }
 
-// GamesNeedingScores возвращает игры без оценок или с устаревшими (раньше
-// staleBefore). Игры с уже свежими scores_updated_at пропускаются.
-func GamesNeedingScores(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, error) {
+// gamesNeeding возвращает игры, у которых указанная колонка-отметка проверки
+// (checkedCol) пуста или старее staleBefore.
+func gamesNeeding(db *sql.DB, checkedCol string, staleBefore time.Time) ([]ScoreTarget, error) {
 	rows, err := db.Query(`
 SELECT id, title, COALESCE(title_en, title)
 FROM games
-WHERE scores_updated_at IS NULL OR scores_updated_at < ?
+WHERE `+checkedCol+` IS NULL OR `+checkedCol+` < ?
 ORDER BY title`, staleBefore)
 	if err != nil {
 		return nil, err
@@ -67,12 +67,46 @@ ORDER BY title`, staleBefore)
 	return out, rows.Err()
 }
 
-// UpdateScores записывает оценки игры и помечает время обновления.
-func UpdateScores(db *sql.DB, id string, mc, oc sql.NullInt64, avg sql.NullFloat64) error {
+// GamesNeedingMetacritic — игры без свежей проверки Metacritic.
+func GamesNeedingMetacritic(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, error) {
+	return gamesNeeding(db, "mc_checked_at", staleBefore)
+}
+
+// GamesNeedingOpenCritic — игры без свежей проверки OpenCritic.
+func GamesNeedingOpenCritic(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, error) {
+	return gamesNeeding(db, "oc_checked_at", staleBefore)
+}
+
+// UpdateMetacritic записывает оценку Metacritic (или NULL, если не найдена),
+// помечает время проверки и пересчитывает среднее. mc.Valid=false означает,
+// что проверка была, но оценки нет.
+func UpdateMetacritic(db *sql.DB, id string, mc sql.NullInt64) error {
+	if _, err := db.Exec(`UPDATE games SET metacritic_score = ?, mc_checked_at = CURRENT_TIMESTAMP WHERE id = ?`, mc, id); err != nil {
+		return err
+	}
+	return recomputeAverage(db, id)
+}
+
+// UpdateOpenCritic — то же для OpenCritic.
+func UpdateOpenCritic(db *sql.DB, id string, oc sql.NullInt64) error {
+	if _, err := db.Exec(`UPDATE games SET opencritic_score = ?, oc_checked_at = CURRENT_TIMESTAMP WHERE id = ?`, oc, id); err != nil {
+		return err
+	}
+	return recomputeAverage(db, id)
+}
+
+// recomputeAverage пересчитывает average_score из текущих значений оценок строки.
+func recomputeAverage(db *sql.DB, id string) error {
 	_, err := db.Exec(`
-UPDATE games
-SET metacritic_score = ?, opencritic_score = ?, average_score = ?, scores_updated_at = CURRENT_TIMESTAMP
-WHERE id = ?`, mc, oc, avg, id)
+UPDATE games SET average_score = (
+  CASE
+    WHEN metacritic_score IS NOT NULL AND opencritic_score IS NOT NULL
+      THEN ROUND((metacritic_score + opencritic_score) / 2.0, 1)
+    WHEN metacritic_score IS NOT NULL THEN metacritic_score
+    WHEN opencritic_score IS NOT NULL THEN opencritic_score
+    ELSE NULL
+  END
+) WHERE id = ?`, id)
 	return err
 }
 
