@@ -81,14 +81,19 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 	}
 	fmt.Printf("Metacritic — игр к проверке: %d\n", len(mcTargets))
 	for i, t := range mcTargets {
-		var mc sql.NullInt64
-		if score, found, err := scores.MetacriticScore(ctx, client, t.TitleEn); err != nil {
-			log.Printf("[mc] %s: %v", t.Title, err)
-		} else if found {
-			mc = sql.NullInt64{Int64: int64(score), Valid: true}
-		}
-		if err := store.UpdateMetacritic(db, t.ID, mc); err != nil {
-			return fmt.Errorf("update mc %s: %w", t.ID, err)
+		score, found, err := scores.MetacriticScore(ctx, client, t.TitleEn)
+		if err != nil {
+			// сетевой сбой/блок/5xx — НЕ помечаем проверенным, повторим в следующий запуск
+			log.Printf("[mc] %s: %v (повторим позже)", t.Title, err)
+		} else {
+			// успех: либо нашли оценку, либо достоверно «нет» (found=false → NULL)
+			var mc sql.NullInt64
+			if found {
+				mc = sql.NullInt64{Int64: int64(score), Valid: true}
+			}
+			if err := store.UpdateMetacritic(db, t.ID, mc); err != nil {
+				return fmt.Errorf("update mc %s: %w", t.ID, err)
+			}
 		}
 		if (i+1)%25 == 0 {
 			fmt.Printf("  Metacritic %d/%d\n", i+1, len(mcTargets))
@@ -111,14 +116,18 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 	}
 	fmt.Printf("OpenCritic — игр за этот запуск: %d (осталось добрать в следующие дни)\n", len(ocTargets))
 	for i, t := range ocTargets {
-		var oc sql.NullInt64
-		if score, found, err := scores.OpenCriticScore(ctx, client, apiKey, t.TitleEn); err != nil {
-			log.Printf("[oc] %s: %v", t.Title, err)
-		} else if found {
-			oc = sql.NullInt64{Int64: int64(score), Valid: true}
-		}
-		if err := store.UpdateOpenCritic(db, t.ID, oc); err != nil {
-			return fmt.Errorf("update oc %s: %w", t.ID, err)
+		score, found, err := scores.OpenCriticScore(ctx, client, apiKey, t.TitleEn)
+		if err != nil {
+			// сбой/429/5xx — НЕ помечаем проверенным и НЕ тратим попытку: повторим позже
+			log.Printf("[oc] %s: %v (повторим позже)", t.Title, err)
+		} else {
+			var oc sql.NullInt64
+			if found {
+				oc = sql.NullInt64{Int64: int64(score), Valid: true}
+			}
+			if err := store.UpdateOpenCritic(db, t.ID, oc); err != nil {
+				return fmt.Errorf("update oc %s: %w", t.ID, err)
+			}
 		}
 		fmt.Printf("  OpenCritic %d/%d: %s\n", i+1, len(ocTargets), t.Title)
 		time.Sleep(300 * time.Millisecond) // ≤4 req/s
