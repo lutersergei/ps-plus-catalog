@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -26,6 +27,7 @@ type ListParams struct {
 type GameView struct {
 	ID          string
 	Title       string
+	TitleEn     string
 	ReleaseYear int
 	Genres      []string
 	Platforms   string
@@ -44,6 +46,32 @@ func (g GameView) HLTBHours() float64 {
 		return 0
 	}
 	return float64(g.HLTBMainSec.Int64) / 3600
+}
+
+var termCleaner = strings.NewReplacer("™", "", "®", "", "’", "'")
+
+// searchTerm — название для поиска на внешних ресурсах (английское, иначе
+// локализованное), без символов ™®, мешающих поиску.
+func (g GameView) searchTerm() string {
+	t := g.TitleEn
+	if t == "" {
+		t = g.Title
+	}
+	return strings.TrimSpace(termCleaner.Replace(t))
+}
+
+// MetacriticURL, OpenCriticURL, HLTBURL — ссылки на поиск игры на ресурсе.
+// Работают всегда (в т.ч. когда оценка ещё не собрана).
+func (g GameView) MetacriticURL() string {
+	return "https://www.metacritic.com/search/" + url.PathEscape(g.searchTerm()) + "/"
+}
+
+func (g GameView) OpenCriticURL() string {
+	return "https://opencritic.com/search?term=" + url.QueryEscape(g.searchTerm())
+}
+
+func (g GameView) HLTBURL() string {
+	return "https://howlongtobeat.com/?q=" + url.QueryEscape(g.searchTerm())
 }
 
 // ListResult — страница результатов с метаданными пагинации.
@@ -152,7 +180,7 @@ func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
 	orderSQL := fmt.Sprintf("ORDER BY (%s IS NULL), %s %s, title ASC", col, col, dir)
 
 	query := `
-SELECT id, title, COALESCE(release_year,0), COALESCE(platforms,''), COALESCE(image_url,''),
+SELECT id, title, COALESCE(title_en,''), COALESCE(release_year,0), COALESCE(platforms,''), COALESCE(image_url,''),
        COALESCE(store_url,''), metacritic_score, opencritic_score, average_score,
        hltb_main_extra, hltb_rating
 FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
@@ -167,7 +195,7 @@ FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
 	var ids []string
 	for rows.Next() {
 		var g GameView
-		if err := rows.Scan(&g.ID, &g.Title, &g.ReleaseYear, &g.Platforms, &g.ImageURL,
+		if err := rows.Scan(&g.ID, &g.Title, &g.TitleEn, &g.ReleaseYear, &g.Platforms, &g.ImageURL,
 			&g.StoreURL, &g.Metacritic, &g.OpenCritic, &g.Average,
 			&g.HLTBMainSec, &g.HLTBRating); err != nil {
 			return res, err

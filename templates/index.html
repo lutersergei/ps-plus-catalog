@@ -45,6 +45,8 @@
   .score .v { font-weight:700; font-size:16px; }
   .score .l { font-size:10px; color:var(--muted); text-transform:uppercase; }
   .score.na .v { color:#54607c; }
+  a.score { display:block; text-decoration:none; color:inherit; transition:background .15s, box-shadow .15s; }
+  a.score:hover { background:#243150; box-shadow:0 0 0 1px var(--accent) inset; }
   .pager { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; padding:8px 24px 40px; }
   .pager a, .pager span { padding:7px 11px; border-radius:8px; background:var(--card); color:var(--text); text-decoration:none; border:1px solid #2c3654; font-size:14px; }
   .pager .cur { background:var(--accent); border-color:var(--accent); }
@@ -154,28 +156,28 @@
       <div class="meta">{{if .ReleaseYear}}{{.ReleaseYear}}{{end}}{{if .Platforms}} · {{.Platforms}}{{end}}</div>
       <div class="genres">{{range .Genres}}<span>{{.}}</span>{{end}}</div>
       <div class="scores">
-        <div class="score {{if not .Metacritic.Valid}}na{{end}}">
+        <a class="score {{if not .Metacritic.Valid}}na{{end}}" href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">
           <div class="v">{{if .Metacritic.Valid}}{{.Metacritic.Int64}}{{else}}—{{end}}</div>
           <div class="l">Metacritic</div>
-        </div>
-        <div class="score {{if not .OpenCritic.Valid}}na{{end}}">
+        </a>
+        <a class="score {{if not .OpenCritic.Valid}}na{{end}}" href="{{.OpenCriticURL}}" target="_blank" rel="noopener" title="Открыть на OpenCritic">
           <div class="v">{{if .OpenCritic.Valid}}{{.OpenCritic.Int64}}{{else}}—{{end}}</div>
           <div class="l">OpenCritic</div>
-        </div>
+        </a>
         <div class="score {{if not .Average.Valid}}na{{end}}">
           <div class="v">{{if .Average.Valid}}{{printf "%.1f" .Average.Float64}}{{else}}—{{end}}</div>
           <div class="l">Среднее</div>
         </div>
       </div>
       <div class="scores">
-        <div class="score {{if not .HLTBMainSec.Valid}}na{{end}}">
+        <a class="score {{if not .HLTBMainSec.Valid}}na{{end}}" href="{{.HLTBURL}}" target="_blank" rel="noopener" title="Открыть на HowLongToBeat">
           <div class="v">{{if .HLTBMainSec.Valid}}{{printf "%.1f" .HLTBHours}}ч{{else}}—{{end}}</div>
           <div class="l">Main+Sides</div>
-        </div>
-        <div class="score {{if not .HLTBRating.Valid}}na{{end}}">
+        </a>
+        <a class="score {{if not .HLTBRating.Valid}}na{{end}}" href="{{.HLTBURL}}" target="_blank" rel="noopener" title="Открыть на HowLongToBeat">
           <div class="v">{{if .HLTBRating.Valid}}{{.HLTBRating.Int64}}{{else}}—{{end}}</div>
           <div class="l">HLTB Rating</div>
-        </div>
+        </a>
       </div>
     </div>
   </div>
