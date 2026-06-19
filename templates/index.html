@@ -14,9 +14,14 @@
   form.filters { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:16px 24px; background:#121a2c; }
   .field { display:flex; flex-direction:column; gap:4px; }
   .field label { font-size:12px; color:var(--muted); }
-  select, button { background:var(--card); color:var(--text); border:1px solid #2c3654; border-radius:8px; padding:8px 10px; font-size:14px; }
+  select, input[type=number], button { background:var(--card); color:var(--text); border:1px solid #2c3654; border-radius:8px; padding:8px 10px; font-size:14px; }
+  input[type=number] { width:80px; }
+  input[type=number]::placeholder { color:var(--muted); }
+  select[multiple] { min-width:140px; }
   button { background:var(--accent); border-color:var(--accent); cursor:pointer; }
   a.reset { color:var(--muted); font-size:13px; align-self:center; }
+  .field-row { display:flex; gap:6px; align-items:center; }
+  .field-row span { color:var(--muted); font-size:12px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; padding:24px; }
   .card { background:var(--card); border:1px solid #232c44; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }
   .card img { width:100%; aspect-ratio:1/1; object-fit:cover; background:#0a0f1a; }
@@ -46,38 +51,76 @@
 
 <form class="filters" method="get" action="/">
   <div class="field">
-    <label>Год</label>
-    <select name="year">
-      <option value="">Все годы</option>
-      {{$y := .Params.Year}}
-      {{range .Years}}<option value="{{.}}" {{if eq $y .}}selected{{end}}>{{.}}</option>{{end}}
-    </select>
+    <label>Год от / до</label>
+    <div class="field-row">
+      {{$yf := .Params.YearFrom}}
+      <select name="year_from">
+        <option value="">—</option>
+        {{range .Years}}<option value="{{.}}" {{if eq $yf .}}selected{{end}}>{{.}}</option>{{end}}
+      </select>
+      <span>–</span>
+      {{$yt := .Params.YearTo}}
+      <select name="year_to">
+        <option value="">—</option>
+        {{range .Years}}<option value="{{.}}" {{if eq $yt .}}selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </div>
   </div>
+
   <div class="field">
-    <label>Жанр</label>
-    <select name="genre">
-      <option value="">Все жанры</option>
-      {{$g := .Params.Genre}}
-      {{range .Genres}}<option value="{{.}}" {{if eq $g .}}selected{{end}}>{{.}}</option>{{end}}
+    <label>Жанр (мультивыбор)</label>
+    {{$selectedGenres := .Params.Genres}}
+    <select name="genre" multiple size="6">
+      {{range .Genres}}
+        {{$g := .}}
+        <option value="{{$g}}"
+          {{range $selectedGenres}}{{if eq . $g}}selected{{end}}{{end}}>{{$g}}</option>
+      {{end}}
     </select>
   </div>
+
+  <div class="field">
+    <label>Средний рейтинг от / до</label>
+    <div class="field-row">
+      <input type="number" name="avg_from" min="0" max="100" step="1" placeholder="0"
+        {{if gt .Params.AvgFrom 0.0}}value="{{printf "%.0f" .Params.AvgFrom}}"{{end}}>
+      <span>–</span>
+      <input type="number" name="avg_to" min="0" max="100" step="1" placeholder="100"
+        {{if gt .Params.AvgTo 0.0}}value="{{printf "%.0f" .Params.AvgTo}}"{{end}}>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Main+Sides (ч) от / до</label>
+    <div class="field-row">
+      <input type="number" name="hltb_from" min="0" step="1" placeholder="0"
+        {{if gt .Params.HLTBFromHours 0.0}}value="{{printf "%.0f" .Params.HLTBFromHours}}"{{end}}>
+      <span>–</span>
+      <input type="number" name="hltb_to" min="0" step="1" placeholder="∞"
+        {{if gt .Params.HLTBToHours 0.0}}value="{{printf "%.0f" .Params.HLTBToHours}}"{{end}}>
+    </div>
+  </div>
+
   <div class="field">
     <label>Сортировка</label>
     <select name="sort">
       {{$s := .Params.Sort}}
-      <option value="title" {{if eq $s "title"}}selected{{end}}>По названию</option>
-      <option value="year" {{if eq $s "year"}}selected{{end}}>По году</option>
-      <option value="average" {{if eq $s "average"}}selected{{end}}>По средней оценке</option>
+      <option value="title"    {{if eq $s "title"}}selected{{end}}>По названию</option>
+      <option value="year"     {{if eq $s "year"}}selected{{end}}>По году</option>
+      <option value="average"  {{if eq $s "average"}}selected{{end}}>По средней оценке</option>
+      <option value="hltbmain" {{if eq $s "hltbmain"}}selected{{end}}>По времени (Main+Sides)</option>
     </select>
   </div>
+
   <div class="field">
     <label>Порядок</label>
     <select name="order">
       {{$o := .Params.Order}}
-      <option value="asc" {{if eq $o "asc"}}selected{{end}}>По возрастанию</option>
+      <option value="asc"  {{if eq $o "asc"}}selected{{end}}>По возрастанию</option>
       <option value="desc" {{if eq $o "desc"}}selected{{end}}>По убыванию</option>
     </select>
   </div>
+
   <button type="submit">Применить</button>
   <a class="reset" href="/">Сбросить</a>
 </form>

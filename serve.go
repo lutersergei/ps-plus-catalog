@@ -65,13 +65,28 @@ func runServe(args []string) error {
 
 func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *template.Template) {
 	q := r.URL.Query()
+
+	// Мультивыбор жанров: несколько значений параметра genre
+	rawGenres := q["genre"]
+	var genres []string
+	for _, g := range rawGenres {
+		if g != "" {
+			genres = append(genres, g)
+		}
+	}
+
 	p := store.ListParams{
-		Genre:    q.Get("genre"),
-		Year:     atoiDefault(q.Get("year"), 0),
-		Sort:     orDefault(q.Get("sort"), "title"),
-		Order:    orDefault(q.Get("order"), "asc"),
-		Page:     atoiDefault(q.Get("page"), 1),
-		PageSize: pageSize,
+		Genres:        genres,
+		YearFrom:      atoiDefault(q.Get("year_from"), 0),
+		YearTo:        atoiDefault(q.Get("year_to"), 0),
+		AvgFrom:       atofDefault(q.Get("avg_from"), 0),
+		AvgTo:         atofDefault(q.Get("avg_to"), 0),
+		HLTBFromHours: atofDefault(q.Get("hltb_from"), 0),
+		HLTBToHours:   atofDefault(q.Get("hltb_to"), 0),
+		Sort:          orDefault(q.Get("sort"), "title"),
+		Order:         orDefault(q.Get("order"), "asc"),
+		Page:          atoiDefault(q.Get("page"), 1),
+		PageSize:      pageSize,
 	}
 
 	result, err := store.ListGames(db, p)
@@ -84,19 +99,35 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	genres, err := store.DistinctGenres(db)
+	genreList, err := store.DistinctGenres(db)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// query без page для ссылок пагинации
+	// BaseQuery — query без page, для ссылок пагинации
 	base := url.Values{}
-	if p.Genre != "" {
-		base.Set("genre", p.Genre)
+	if p.YearFrom > 0 {
+		base.Set("year_from", strconv.Itoa(p.YearFrom))
 	}
-	if p.Year > 0 {
-		base.Set("year", strconv.Itoa(p.Year))
+	if p.YearTo > 0 {
+		base.Set("year_to", strconv.Itoa(p.YearTo))
+	}
+	// Несколько жанров через Add (не Set, иначе перезапишет)
+	for _, g := range p.Genres {
+		base.Add("genre", g)
+	}
+	if p.AvgFrom > 0 {
+		base.Set("avg_from", strconv.FormatFloat(p.AvgFrom, 'f', -1, 64))
+	}
+	if p.AvgTo > 0 {
+		base.Set("avg_to", strconv.FormatFloat(p.AvgTo, 'f', -1, 64))
+	}
+	if p.HLTBFromHours > 0 {
+		base.Set("hltb_from", strconv.FormatFloat(p.HLTBFromHours, 'f', -1, 64))
+	}
+	if p.HLTBToHours > 0 {
+		base.Set("hltb_to", strconv.FormatFloat(p.HLTBToHours, 'f', -1, 64))
 	}
 	base.Set("sort", p.Sort)
 	base.Set("order", p.Order)
@@ -104,7 +135,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 	data := pageData{
 		Result:    result,
 		Years:     years,
-		Genres:    genres,
+		Genres:    genreList,
 		Params:    p,
 		BaseQuery: template.URL(base.Encode()),
 		Pages:     pageWindow(result.Page, result.TotalPages),
@@ -141,6 +172,13 @@ func pageWindow(current, total int) []int {
 func atoiDefault(s string, def int) int {
 	if n, err := strconv.Atoi(s); err == nil {
 		return n
+	}
+	return def
+}
+
+func atofDefault(s string, def float64) float64 {
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return f
 	}
 	return def
 }

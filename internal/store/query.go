@@ -8,12 +8,17 @@ import (
 
 // ListParams — параметры выборки игр для страницы.
 type ListParams struct {
-	Genre    string // фильтр по жанру (пусто = все)
-	Year     int    // фильтр по году (0 = все)
-	Sort     string // "year" | "average" | "title"
-	Order    string // "asc" | "desc"
-	Page     int    // с 1
-	PageSize int
+	Genres        []string // фильтр по жанрам (OR; пусто = все)
+	YearFrom      int      // нижняя граница года выпуска (0 = не задана)
+	YearTo        int      // верхняя граница года выпуска (0 = не задана)
+	AvgFrom       float64  // нижняя граница среднего рейтинга (0 = не задана)
+	AvgTo         float64  // верхняя граница среднего рейтинга (0 = не задана)
+	HLTBFromHours float64  // нижняя граница Main+Sides в часах (0 = не задана)
+	HLTBToHours   float64  // верхняя граница Main+Sides в часах (0 = не задана)
+	Sort          string   // "year" | "average" | "title" | "hltbmain"
+	Order         string   // "asc" | "desc"
+	Page          int      // с 1
+	PageSize      int
 }
 
 // GameView — игра для отображения.
@@ -51,9 +56,10 @@ type ListResult struct {
 
 // sortColumns — белый список колонок сортировки (защита от SQL-инъекции).
 var sortColumns = map[string]string{
-	"year":    "release_year",
-	"average": "average_score",
-	"title":   "title",
+	"year":     "release_year",
+	"average":  "average_score",
+	"title":    "title",
+	"hltbmain": "hltb_main_extra",
 }
 
 // ListGames возвращает отфильтрованную, отсортированную и постранично нарезанную
@@ -68,14 +74,46 @@ func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
 
 	var where []string
 	var args []any
-	if p.Year > 0 {
-		where = append(where, "release_year = ?")
-		args = append(args, p.Year)
+
+	// Фильтр по году: диапазон
+	if p.YearFrom > 0 {
+		where = append(where, "release_year >= ?")
+		args = append(args, p.YearFrom)
 	}
-	if p.Genre != "" {
-		where = append(where, "id IN (SELECT game_id FROM game_genres WHERE genre = ?)")
-		args = append(args, p.Genre)
+	if p.YearTo > 0 {
+		where = append(where, "release_year <= ?")
+		args = append(args, p.YearTo)
 	}
+
+	// Фильтр по жанрам: мультивыбор (OR — хотя бы один из выбранных)
+	if len(p.Genres) > 0 {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(p.Genres)), ",")
+		where = append(where, "id IN (SELECT game_id FROM game_genres WHERE genre IN ("+placeholders+"))")
+		for _, g := range p.Genres {
+			args = append(args, g)
+		}
+	}
+
+	// Фильтр по среднему рейтингу
+	if p.AvgFrom > 0 {
+		where = append(where, "average_score >= ?")
+		args = append(args, p.AvgFrom)
+	}
+	if p.AvgTo > 0 {
+		where = append(where, "average_score <= ?")
+		args = append(args, p.AvgTo)
+	}
+
+	// Фильтр по времени Main+Sides (в часах → секунды в БД)
+	if p.HLTBFromHours > 0 {
+		where = append(where, "hltb_main_extra >= ?")
+		args = append(args, p.HLTBFromHours*3600)
+	}
+	if p.HLTBToHours > 0 {
+		where = append(where, "hltb_main_extra <= ?")
+		args = append(args, p.HLTBToHours*3600)
+	}
+
 	whereSQL := ""
 	if len(where) > 0 {
 		whereSQL = "WHERE " + strings.Join(where, " AND ")
