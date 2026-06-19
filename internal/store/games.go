@@ -77,6 +77,20 @@ func GamesNeedingOpenCritic(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, e
 	return gamesNeeding(db, "oc_checked_at", staleBefore)
 }
 
+// GamesNeedingHLTB — игры без свежей проверки HowLongToBeat.
+func GamesNeedingHLTB(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, error) {
+	return gamesNeeding(db, "hltb_checked_at", staleBefore)
+}
+
+// UpdateHLTB записывает время Main+Sides (сек) и рейтинг HLTB (0–100), помечает
+// время проверки. Невалидные значения (Valid=false) означают «нет данных».
+func UpdateHLTB(db *sql.DB, id string, mainExtra, rating sql.NullInt64) error {
+	_, err := db.Exec(`
+UPDATE games SET hltb_main_extra = ?, hltb_rating = ?, hltb_checked_at = CURRENT_TIMESTAMP
+WHERE id = ?`, mainExtra, rating, id)
+	return err
+}
+
 // UpdateMetacritic записывает оценку Metacritic (или NULL, если не найдена),
 // помечает время проверки и пересчитывает среднее. mc.Valid=false означает,
 // что проверка была, но оценки нет.
@@ -105,6 +119,9 @@ func ResetMissingChecks(db *sql.DB) (mc, oc int64, err error) {
 	}
 	r2, err := db.Exec(`UPDATE games SET oc_checked_at = NULL WHERE opencritic_score IS NULL`)
 	if err != nil {
+		return 0, 0, err
+	}
+	if _, err := db.Exec(`UPDATE games SET hltb_checked_at = NULL WHERE hltb_main_extra IS NULL AND hltb_rating IS NULL`); err != nil {
 		return 0, 0, err
 	}
 	mc, _ = r1.RowsAffected()

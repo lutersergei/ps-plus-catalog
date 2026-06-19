@@ -105,6 +105,16 @@
           <div class="l">Среднее</div>
         </div>
       </div>
+      <div class="scores">
+        <div class="score {{if not .HLTBMainSec.Valid}}na{{end}}">
+          <div class="v">{{if .HLTBMainSec.Valid}}{{printf "%.1f" .HLTBHours}}ч{{else}}—{{end}}</div>
+          <div class="l">Main+Sides</div>
+        </div>
+        <div class="score {{if not .HLTBRating.Valid}}na{{end}}">
+          <div class="v">{{if .HLTBRating.Valid}}{{.HLTBRating.Int64}}{{else}}—{{end}}</div>
+          <div class="l">HLTB Rating</div>
+        </div>
+      </div>
     </div>
   </div>
   {{end}}

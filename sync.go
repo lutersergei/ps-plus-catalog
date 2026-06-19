@@ -49,7 +49,45 @@ func runSync(args []string) error {
 	if *skipScores {
 		return nil
 	}
-	return syncScores(ctx, db, client, *maxOC, *refreshDays)
+	if err := syncScores(ctx, db, client, *maxOC, *refreshDays); err != nil {
+		return err
+	}
+	return syncHLTB(ctx, db, client, *refreshDays)
+}
+
+// syncHLTB собирает время Main+Sides и рейтинг с HowLongToBeat для всех игр без
+// свежей проверки (источник бесплатный, без дневного лимита).
+func syncHLTB(ctx context.Context, db *sql.DB, client *http.Client, refreshDays int) error {
+	staleBefore := time.Now().AddDate(0, 0, -refreshDays)
+	targets, err := store.GamesNeedingHLTB(db, staleBefore)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("HowLongToBeat — игр к проверке: %d\n", len(targets))
+	session := scores.NewHLTBSession(client)
+	for i, t := range targets {
+		res, found, err := session.Lookup(ctx, t.TitleEn)
+		if err != nil {
+			// сбой/блок — НЕ помечаем проверенным, повторим в следующий запуск
+			log.Printf("[hltb] %s: %v (повторим позже)", t.Title, err)
+		} else {
+			var mainExtra, rating sql.NullInt64
+			if found && res.MainExtraSeconds > 0 {
+				mainExtra = sql.NullInt64{Int64: int64(res.MainExtraSeconds), Valid: true}
+			}
+			if found && res.Rating > 0 {
+				rating = sql.NullInt64{Int64: int64(res.Rating), Valid: true}
+			}
+			if err := store.UpdateHLTB(db, t.ID, mainExtra, rating); err != nil {
+				return fmt.Errorf("update hltb %s: %w", t.ID, err)
+			}
+		}
+		if (i+1)%25 == 0 {
+			fmt.Printf("  HowLongToBeat %d/%d\n", i+1, len(targets))
+		}
+		time.Sleep(500 * time.Millisecond) // вежливо к howlongtobeat.com
+	}
+	return nil
 }
 
 // syncCatalog тянет каталог PS Plus и пишет игры + жанры в БД.

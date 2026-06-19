@@ -28,6 +28,16 @@ type GameView struct {
 	Metacritic  sql.NullInt64
 	OpenCritic  sql.NullInt64
 	Average     sql.NullFloat64
+	HLTBMainSec sql.NullInt64 // Main + Sides, секунды
+	HLTBRating  sql.NullInt64 // рейтинг HLTB (0–100)
+}
+
+// HLTBHours возвращает Main+Sides в часах (для шаблона), 0 если нет данных.
+func (g GameView) HLTBHours() float64 {
+	if !g.HLTBMainSec.Valid {
+		return 0
+	}
+	return float64(g.HLTBMainSec.Int64) / 3600
 }
 
 // ListResult — страница результатов с метаданными пагинации.
@@ -91,7 +101,8 @@ func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
 
 	query := `
 SELECT id, title, COALESCE(release_year,0), COALESCE(platforms,''), COALESCE(image_url,''),
-       COALESCE(store_url,''), metacritic_score, opencritic_score, average_score
+       COALESCE(store_url,''), metacritic_score, opencritic_score, average_score,
+       hltb_main_extra, hltb_rating
 FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
 	args = append(args, p.PageSize, (p.Page-1)*p.PageSize)
 
@@ -105,7 +116,8 @@ FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
 	for rows.Next() {
 		var g GameView
 		if err := rows.Scan(&g.ID, &g.Title, &g.ReleaseYear, &g.Platforms, &g.ImageURL,
-			&g.StoreURL, &g.Metacritic, &g.OpenCritic, &g.Average); err != nil {
+			&g.StoreURL, &g.Metacritic, &g.OpenCritic, &g.Average,
+			&g.HLTBMainSec, &g.HLTBRating); err != nil {
 			return res, err
 		}
 		res.Games = append(res.Games, g)
