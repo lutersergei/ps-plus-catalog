@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -35,16 +36,32 @@ type HLTBSession struct {
 func NewHLTBSession(c *http.Client) *HLTBSession { return &HLTBSession{client: c} }
 
 // Lookup ищет игру по названию и возвращает время Main+Sides и рейтинг.
-// found=false, если совпадений нет.
+// HLTB-поиск чувствителен к лишним словам (издания/платформы/подзаголовки дают
+// пустую выдачу), поэтому пробуем несколько вариантов запроса от полного к ядру.
+// found=false, если совпадений нет ни по одному варианту.
 func (s *HLTBSession) Lookup(ctx context.Context, title string) (HLTBResult, bool, error) {
-	res, found, err := s.search(ctx, title)
-	if err == errHLTBAuth { // токен протух/отсутствует — переполучаем и повторяем один раз
-		if err := s.init(ctx); err != nil {
+	for _, terms := range hltbCandidates(title) {
+		data, err := s.searchWithRetry(ctx, terms)
+		if err != nil {
 			return HLTBResult{}, false, err
 		}
-		res, found, err = s.search(ctx, title)
+		if g, ok := bestHLTB(data, title); ok {
+			return HLTBResult{MainExtraSeconds: g.CompPlus, Rating: g.ReviewScore}, true, nil
+		}
 	}
-	return res, found, err
+	return HLTBResult{}, false, nil
+}
+
+// searchWithRetry делает поиск, переполучая токен при протухании.
+func (s *HLTBSession) searchWithRetry(ctx context.Context, terms []string) ([]hltbGame, error) {
+	data, err := s.search(ctx, terms)
+	if err == errHLTBAuth {
+		if err := s.init(ctx); err != nil {
+			return nil, err
+		}
+		data, err = s.search(ctx, terms)
+	}
+	return data, err
 }
 
 var errHLTBAuth = fmt.Errorf("hltb: auth/handshake required")
@@ -73,15 +90,22 @@ func (s *HLTBSession) init(ctx context.Context) error {
 	return nil
 }
 
-// search выполняет POST /api/bleed. Возвращает errHLTBAuth при 401/403/404
-// (признак протухшего/отсутствующего токена).
-func (s *HLTBSession) search(ctx context.Context, title string) (HLTBResult, bool, error) {
+// hltbGame — игра в ответе HLTB.
+type hltbGame struct {
+	GameName    string `json:"game_name"`
+	CompPlus    int    `json:"comp_plus"`
+	ReviewScore int    `json:"review_score"`
+}
+
+// search выполняет POST /api/bleed с заданными поисковыми словами. Возвращает
+// errHLTBAuth при 401/403/404 (признак протухшего/отсутствующего токена).
+func (s *HLTBSession) search(ctx context.Context, terms []string) ([]hltbGame, error) {
 	if s.token == "" {
-		return HLTBResult{}, false, errHLTBAuth
+		return nil, errHLTBAuth
 	}
 	payload := map[string]any{
 		"searchType":  "games",
-		"searchTerms": searchTerms(title),
+		"searchTerms": terms,
 		"searchPage":  1,
 		"size":        20,
 		"searchOptions": map[string]any{
@@ -109,58 +133,83 @@ func (s *HLTBSession) search(ctx context.Context, title string) (HLTBResult, boo
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return HLTBResult{}, false, fmt.Errorf("hltb search: %w", err)
+		return nil, fmt.Errorf("hltb search: %w", err)
 	}
 	defer resp.Body.Close()
 	switch {
 	case resp.StatusCode == http.StatusOK:
 	case resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode == 404:
 		s.token = "" // протух
-		return HLTBResult{}, false, errHLTBAuth
+		return nil, errHLTBAuth
 	default:
-		return HLTBResult{}, false, fmt.Errorf("hltb search: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("hltb search: status %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return HLTBResult{}, false, err
+		return nil, err
 	}
-	return parseHLTB(body, title)
+	var r struct {
+		Data []hltbGame `json:"data"`
+	}
+	if err := json.Unmarshal(body, &r); err != nil {
+		return nil, fmt.Errorf("hltb parse: %w", err)
+	}
+	return r.Data, nil
 }
 
-// parseHLTB выбирает лучшее совпадение по нормализованному названию и берёт
-// comp_plus (Main+Sides) и review_score (рейтинг).
-func parseHLTB(raw []byte, title string) (HLTBResult, bool, error) {
-	var r struct {
-		Data []struct {
-			GameName    string `json:"game_name"`
-			CompPlus    int    `json:"comp_plus"`
-			ReviewScore int    `json:"review_score"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(raw, &r); err != nil {
-		return HLTBResult{}, false, fmt.Errorf("hltb parse: %w", err)
-	}
-	if len(r.Data) == 0 {
-		return HLTBResult{}, false, nil
+// bestHLTB выбирает совпадение консервативно: точное по нормализованному имени,
+// иначе имя результата — подстрока нашего названия (или наоборот). Иначе — нет.
+func bestHLTB(data []hltbGame, title string) (hltbGame, bool) {
+	if len(data) == 0 {
+		return hltbGame{}, false
 	}
 	want := NormalizeTitle(title)
-	best := r.Data[0] // по умолчанию самый популярный
-	for _, g := range r.Data {
+	for _, g := range data {
 		if NormalizeTitle(g.GameName) == want {
-			best = g
-			break
+			return g, true
 		}
 	}
-	return HLTBResult{MainExtraSeconds: best.CompPlus, Rating: best.ReviewScore}, true, nil
+	for _, g := range data {
+		ng := NormalizeTitle(g.GameName)
+		if ng != "" && (strings.Contains(want, ng) || strings.Contains(ng, want)) {
+			return g, true
+		}
+	}
+	return hltbGame{}, false
 }
 
-// searchTerms готовит поисковые слова: чистим название и режем по пробелам.
-func searchTerms(title string) []string {
-	fields := strings.Fields(CleanTitle(title))
-	if len(fields) == 0 {
-		fields = []string{title}
+// hltbCandidates строит варианты поисковых слов от полного очищенного названия к
+// ядру (первые 3, первые 2 слова) — HLTB на переусложнённый запрос даёт пусто.
+func hltbCandidates(title string) [][]string {
+	words := strings.Fields(hltbClean(title))
+	if len(words) == 0 {
+		words = strings.Fields(title)
 	}
-	return fields
+	cands := [][]string{words}
+	if len(words) > 3 {
+		cands = append(cands, words[:3])
+	}
+	if len(words) > 2 {
+		cands = append(cands, words[:2])
+	}
+	return cands
+}
+
+// hltbStrip убирает скобочный контент [], () и шум изданий/платформ/префиксов
+// агрессивнее, чем CleanTitle (для HLTB-поиска, не для slug Metacritic).
+var (
+	hltbBrackets = regexp.MustCompile(`[\(\[][^\)\]]*[\)\]]`)
+	hltbEdition  = regexp.MustCompile(`(?i)\b(standard|classic|enhanced|legendary|extended|complete|definitive|deluxe|ultimate|gold|premium|digital|next\s*gen|cross[- ]gen|elite|game of the year|goty|console|anniversary|jumbo|collector'?s|legacy)\b[^|]*?\b(edition|bundle|collection|version|set|upgrade|pass)\b`)
+	hltbExtra    = regexp.MustCompile(`(?i)\b(free upgrade|expansion pass|cross[- ]gen|next gen|playstation plus|directors? cut|ea sports|remastered|reforged|ps4|ps5|playstation\s*[45]|ps\s*vr2?)\b`)
+)
+
+func hltbClean(s string) string {
+	s = strings.NewReplacer("’", "", "'", "", "®", " ", "™", " ", "|", " ", ":", " ", "-", " ", "–", " ", "—", " ", "&", " ", "+", " ").Replace(s)
+	s = diacritics.Replace(s)
+	s = hltbBrackets.ReplaceAllString(s, " ")
+	s = hltbEdition.ReplaceAllString(s, " ")
+	s = hltbExtra.ReplaceAllString(s, " ")
+	return strings.Join(strings.Fields(s), " ")
 }
 
 func (s *HLTBSession) setBrowserHeaders(req *http.Request) {
