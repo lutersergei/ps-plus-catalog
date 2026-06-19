@@ -32,7 +32,7 @@ type pageData struct {
 func runServe(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	dbPath := fs.String("db", "ps-extra.db", "путь к файлу SQLite")
-	addr := fs.String("addr", ":8080", "адрес HTTP-сервера")
+	addr := fs.String("addr", ":8081", "адрес HTTP-сервера")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

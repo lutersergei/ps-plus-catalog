@@ -17,9 +17,17 @@
   select, input[type=number], button { background:var(--card); color:var(--text); border:1px solid #2c3654; border-radius:8px; padding:8px 10px; font-size:14px; }
   input[type=number] { width:80px; }
   input[type=number]::placeholder { color:var(--muted); }
-  select[multiple] { min-width:140px; }
   button { background:var(--accent); border-color:var(--accent); cursor:pointer; }
-  a.reset { color:var(--muted); font-size:13px; align-self:center; }
+  a.reset { color:var(--muted); font-size:13px; align-self:flex-end; padding-bottom:9px; }
+  /* Жанр: компактный выпадающий мультивыбор на <details> */
+  .genre-dd { position:relative; }
+  .genre-dd > summary { list-style:none; cursor:pointer; background:var(--card); border:1px solid #2c3654; border-radius:8px; padding:8px 28px 8px 10px; font-size:14px; min-width:150px; position:relative; white-space:nowrap; }
+  .genre-dd > summary::-webkit-details-marker { display:none; }
+  .genre-dd > summary::after { content:"▾"; position:absolute; right:10px; top:50%; transform:translateY(-50%); color:var(--muted); }
+  .genre-dd[open] > summary::after { content:"▴"; }
+  .genre-panel { position:absolute; z-index:20; margin-top:4px; max-height:240px; overflow:auto; background:#1a2236; border:1px solid #2c3654; border-radius:8px; padding:6px; min-width:200px; box-shadow:0 8px 24px rgba(0,0,0,.45); }
+  .genre-opt { display:flex; align-items:center; gap:8px; padding:5px 6px; font-size:13px; color:var(--text); white-space:nowrap; cursor:pointer; border-radius:6px; }
+  .genre-opt:hover { background:#212a42; }
   .field-row { display:flex; gap:6px; align-items:center; }
   .field-row span { color:var(--muted); font-size:12px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; padding:24px; }
@@ -68,15 +76,20 @@
   </div>
 
   <div class="field">
-    <label>Жанр (мультивыбор)</label>
+    <label>Жанр</label>
     {{$selectedGenres := .Params.Genres}}
-    <select name="genre" multiple size="6">
-      {{range .Genres}}
-        {{$g := .}}
-        <option value="{{$g}}"
-          {{range $selectedGenres}}{{if eq . $g}}selected{{end}}{{end}}>{{$g}}</option>
-      {{end}}
-    </select>
+    <details class="genre-dd">
+      <summary>{{if $selectedGenres}}Выбрано: {{len $selectedGenres}}{{else}}Все жанры{{end}}</summary>
+      <div class="genre-panel">
+        {{range .Genres}}
+          {{$g := .}}
+          <label class="genre-opt">
+            <input type="checkbox" name="genre" value="{{$g}}"
+              {{range $selectedGenres}}{{if eq . $g}}checked{{end}}{{end}}>{{$g}}
+          </label>
+        {{end}}
+      </div>
+    </details>
   </div>
 
   <div class="field">
