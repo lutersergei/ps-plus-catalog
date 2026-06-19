@@ -58,7 +58,12 @@ func syncCatalog(ctx context.Context, db *sql.DB, client *http.Client) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("получено игр из каталога: %d\n", len(games))
+	uniq := make(map[string]bool, len(games))
+	for _, g := range games {
+		uniq[g.ID] = true
+	}
+	fmt.Printf("получено записей из каталога: %d (уникальных игр: %d, дубли изданий схлопнуты по conceptId)\n",
+		len(games), len(uniq))
 	for _, g := range games {
 		row := store.GameRow{
 			ID: g.ID, Title: g.Title, TitleEn: g.TitleEn,
