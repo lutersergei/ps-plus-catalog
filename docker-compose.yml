@@ -1,0 +1,21 @@
+services:
+  ps-extra:
+    build: .
+    image: ps-extra:latest
+    container_name: ps-extra
+    ports:
+      # Публикуем только на localhost хоста. Для внешнего доступа поменяйте на
+      # "8080:8080" и поставьте перед сервисом reverse proxy с TLS.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      # БД (и при желании .env) хранятся на хосте, переживают пересоздание контейнера
+      - ./data:/data
+    env_file:
+      # ключи RapidAPI (OPENCRITIC_API_KEYS). Скопируйте .env.example -> .env
+      - path: .env
+        required: false
+    restart: unless-stopped
+
+# Сбор данных (каталог + оценки), отдельно от веб-сервера:
+#   docker compose run --rm ps-extra sync
+# Веб-страница после `docker compose up -d`: http://localhost:8080

@@ -1,0 +1,10 @@
+.git
+.idea
+vendor
+data
+*.db
+*.db-*
+/ps-extra
+.env
+docs
+README.md

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PS Plus Extra (Турция) — каталог с оценками</title>
+<style>
+  :root { --bg:#0e1320; --card:#1a2236; --accent:#2f6fed; --text:#e8edf7; --muted:#9aa6bf; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 -apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:20px 24px; border-bottom:1px solid #232c44; }
+  h1 { margin:0; font-size:20px; }
+  .sub { color:var(--muted); font-size:13px; margin-top:4px; }
+  form.filters { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:16px 24px; background:#121a2c; }
+  .field { display:flex; flex-direction:column; gap:4px; }
+  .field label { font-size:12px; color:var(--muted); }
+  select, input[type=number], input[type=text], button { background:var(--card); color:var(--text); border:1px solid #2c3654; border-radius:8px; padding:8px 10px; font-size:14px; }
+  input[type=number] { width:80px; }
+  input.search { width:200px; }
+  input::placeholder { color:var(--muted); }
+  button { background:var(--accent); border-color:var(--accent); cursor:pointer; }
+  a.reset { color:var(--muted); font-size:13px; align-self:flex-end; padding-bottom:9px; }
+  /* Жанр: компактный выпадающий мультивыбор на <details> */
+  .genre-dd { position:relative; }
+  .genre-dd > summary { list-style:none; cursor:pointer; background:var(--card); border:1px solid #2c3654; border-radius:8px; padding:8px 28px 8px 10px; font-size:14px; min-width:150px; position:relative; white-space:nowrap; }
+  .genre-dd > summary::-webkit-details-marker { display:none; }
+  .genre-dd > summary::after { content:"▾"; position:absolute; right:10px; top:50%; transform:translateY(-50%); color:var(--muted); }
+  .genre-dd[open] > summary::after { content:"▴"; }
+  .genre-panel { position:absolute; z-index:20; margin-top:4px; max-height:240px; overflow:auto; background:#1a2236; border:1px solid #2c3654; border-radius:8px; padding:6px; min-width:200px; box-shadow:0 8px 24px rgba(0,0,0,.45); }
+  .genre-opt { display:flex; align-items:center; gap:8px; padding:5px 6px; font-size:13px; color:var(--text); white-space:nowrap; cursor:pointer; border-radius:6px; }
+  .genre-opt:hover { background:#212a42; }
+  .field-row { display:flex; gap:6px; align-items:center; }
+  .field-row span { color:var(--muted); font-size:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; padding:24px; }
+  .card { background:var(--card); border:1px solid #232c44; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }
+  .card img { width:100%; aspect-ratio:1/1; object-fit:cover; background:#0a0f1a; }
+  .card .body { padding:12px; display:flex; flex-direction:column; gap:8px; flex:1; }
+  .card .title { font-weight:600; font-size:14px; }
+  .card .title a { color:var(--text); text-decoration:none; }
+  .card .meta { color:var(--muted); font-size:12px; }
+  .genres { display:flex; flex-wrap:wrap; gap:4px; }
+  .genres span { background:#212a42; color:var(--muted); border-radius:6px; padding:2px 6px; font-size:11px; }
+  .scores { display:flex; gap:8px; margin-top:auto; }
+  .score { flex:1; text-align:center; border-radius:8px; padding:6px 4px; background:#0f1626; }
+  .score .v { font-weight:700; font-size:16px; }
+  .score .l { font-size:10px; color:var(--muted); text-transform:uppercase; }
+  .score.na .v { color:#54607c; }
+  a.score { display:block; text-decoration:none; color:inherit; transition:background .15s, box-shadow .15s; }
+  a.score:hover { background:#243150; box-shadow:0 0 0 1px var(--accent) inset; }
+  .pager { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; padding:8px 24px 40px; }
+  .pager a, .pager span { padding:7px 11px; border-radius:8px; background:var(--card); color:var(--text); text-decoration:none; border:1px solid #2c3654; font-size:14px; }
+  .pager .cur { background:var(--accent); border-color:var(--accent); }
+  .pager .disabled { opacity:.4; pointer-events:none; }
+  .empty { padding:60px 24px; text-align:center; color:var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>PS Plus Extra (Турция) — каталог с оценками</h1>
+  <div class="sub">Всего игр по фильтру: {{.Result.Total}} · страница {{.Result.Page}} из {{.Result.TotalPages}}</div>
+</header>
+
+<form class="filters" method="get" action="/">
+  <div class="field">
+    <label>Поиск по названию</label>
+    <input type="text" name="q" value="{{.Params.Search}}" placeholder="например, spider" class="search">
+  </div>
+
+  <div class="field">
+    <label>Год от / до</label>
+    <div class="field-row">
+      {{$yf := .Params.YearFrom}}
+      <select name="year_from">
+        <option value="">—</option>
+        {{range .Years}}<option value="{{.}}" {{if eq $yf .}}selected{{end}}>{{.}}</option>{{end}}
+      </select>
+      <span>–</span>
+      {{$yt := .Params.YearTo}}
+      <select name="year_to">
+        <option value="">—</option>
+        {{range .Years}}<option value="{{.}}" {{if eq $yt .}}selected{{end}}>{{.}}</option>{{end}}
+      </select>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Жанр</label>
+    {{$selectedGenres := .Params.Genres}}
+    <details class="genre-dd">
+      <summary>{{if $selectedGenres}}Выбрано: {{len $selectedGenres}}{{else}}Все жанры{{end}}</summary>
+      <div class="genre-panel">
+        {{range .Genres}}
+          {{$g := .}}
+          <label class="genre-opt">
+            <input type="checkbox" name="genre" value="{{$g}}"
+              {{range $selectedGenres}}{{if eq . $g}}checked{{end}}{{end}}>{{$g}}
+          </label>
+        {{end}}
+      </div>
+    </details>
+  </div>
+
+  <div class="field">
+    <label>Средний рейтинг от / до</label>
+    <div class="field-row">
+      <input type="number" name="avg_from" min="0" max="100" step="1" placeholder="0"
+        {{if gt .Params.AvgFrom 0.0}}value="{{printf "%.0f" .Params.AvgFrom}}"{{end}}>
+      <span>–</span>
+      <input type="number" name="avg_to" min="0" max="100" step="1" placeholder="100"
+        {{if gt .Params.AvgTo 0.0}}value="{{printf "%.0f" .Params.AvgTo}}"{{end}}>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Main+Sides (ч) от / до</label>
+    <div class="field-row">
+      <input type="number" name="hltb_from" min="0" step="1" placeholder="0"
+        {{if gt .Params.HLTBFromHours 0.0}}value="{{printf "%.0f" .Params.HLTBFromHours}}"{{end}}>
+      <span>–</span>
+      <input type="number" name="hltb_to" min="0" step="1" placeholder="∞"
+        {{if gt .Params.HLTBToHours 0.0}}value="{{printf "%.0f" .Params.HLTBToHours}}"{{end}}>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Сортировка</label>
+    <select name="sort">
+      {{$s := .Params.Sort}}
+      <option value="title"    {{if eq $s "title"}}selected{{end}}>По названию</option>
+      <option value="year"     {{if eq $s "year"}}selected{{end}}>По году</option>
+      <option value="average"  {{if eq $s "average"}}selected{{end}}>По средней оценке</option>
+      <option value="hltbmain" {{if eq $s "hltbmain"}}selected{{end}}>По времени (Main+Sides)</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label>Порядок</label>
+    <select name="order">
+      {{$o := .Params.Order}}
+      <option value="asc"  {{if eq $o "asc"}}selected{{end}}>По возрастанию</option>
+      <option value="desc" {{if eq $o "desc"}}selected{{end}}>По убыванию</option>
+    </select>
+  </div>
+
+  <button type="submit">Применить</button>
+  <a class="reset" href="/">Сбросить</a>
+</form>
+
+{{if .Result.Games}}
+<div class="grid">
+  {{range .Result.Games}}
+  <div class="card">
+    {{if .ImageURL}}<img loading="lazy" src="{{.ImageURL}}" alt="">{{end}}
+    <div class="body">
+      <div class="title"><a href="{{.StoreURL}}" target="_blank" rel="noopener">{{.Title}}</a></div>
+      <div class="meta">{{if .ReleaseYear}}{{.ReleaseYear}}{{end}}{{if .Platforms}} · {{.Platforms}}{{end}}</div>
+      <div class="genres">{{range .Genres}}<span>{{.}}</span>{{end}}</div>
+      <div class="scores">
+        <a class="score {{if not .Metacritic.Valid}}na{{end}}" href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">
+          <div class="v">{{if .Metacritic.Valid}}{{.Metacritic.Int64}}{{else}}—{{end}}</div>
+          <div class="l">Metacritic</div>
+        </a>
+        <a class="score {{if not .OpenCritic.Valid}}na{{end}}" href="{{.OpenCriticURL}}" target="_blank" rel="noopener" title="Открыть на OpenCritic">
+          <div class="v">{{if .OpenCritic.Valid}}{{.OpenCritic.Int64}}{{else}}—{{end}}</div>
+          <div class="l">OpenCritic</div>
+        </a>
+        <div class="score {{if not .Average.Valid}}na{{end}}">
+          <div class="v">{{if .Average.Valid}}{{printf "%.1f" .Average.Float64}}{{else}}—{{end}}</div>
+          <div class="l">Среднее</div>
+        </div>
+      </div>
+      <div class="scores">
+        <a class="score {{if not .HLTBMainSec.Valid}}na{{end}}" href="{{.HLTBURL}}" target="_blank" rel="noopener" title="Открыть на HowLongToBeat">
+          <div class="v">{{if .HLTBMainSec.Valid}}{{printf "%.1f" .HLTBHours}}ч{{else}}—{{end}}</div>
+          <div class="l">Main+Sides</div>
+        </a>
+        <a class="score {{if not .HLTBRating.Valid}}na{{end}}" href="{{.HLTBURL}}" target="_blank" rel="noopener" title="Открыть на HowLongToBeat">
+          <div class="v">{{if .HLTBRating.Valid}}{{.HLTBRating.Int64}}{{else}}—{{end}}</div>
+          <div class="l">HLTB Rating</div>
+        </a>
+      </div>
+    </div>
+  </div>
+  {{end}}
+</div>
+
+<nav class="pager">
+  {{if .HasPrev}}<a href="?{{.BaseQuery}}&page={{add .Result.Page -1}}">‹ Назад</a>{{else}}<span class="disabled">‹ Назад</span>{{end}}
+  {{$cur := .Result.Page}}{{$bq := .BaseQuery}}
+  {{range .Pages}}
+    {{if eq . $cur}}<span class="cur">{{.}}</span>{{else}}<a href="?{{$bq}}&page={{.}}">{{.}}</a>{{end}}
+  {{end}}
+  {{if .HasNext}}<a href="?{{.BaseQuery}}&page={{add .Result.Page 1}}">Вперёд ›</a>{{else}}<span class="disabled">Вперёд ›</span>{{end}}
+</nav>
+{{else}}
+<div class="empty">Ничего не найдено по выбранным фильтрам.</div>
+{{end}}
+
+</body>
+</html>

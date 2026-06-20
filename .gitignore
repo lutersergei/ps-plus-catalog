@@ -1,0 +1,8 @@
+/ps-extra
+*.db
+*.db-*
+/vendor/
+/.idea/
+/.env
+/data/
+/docs/

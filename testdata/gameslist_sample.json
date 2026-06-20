@@ -1,0 +1,162 @@
+[
+ {
+  "catalogKey": "A",
+  "count": 35,
+  "games": [
+   {
+    "conceptId": 228903,
+    "name": "A Hat in Time",
+    "nameEn": "A Hat in Time",
+    "conceptUrl": "https://store.playstation.com/tr-tr/concept/228903",
+    "imageUrl": "https://image.api.playstation.com/cdn/EP3717/CUSA10028_00/W5zEdEr6WbWrhcZKurNdeDo7qUXDyo4I.png",
+    "genre": [
+     "ADVENTURE",
+     "ACTION",
+     "ACTION"
+    ],
+    "ageRating": {
+     "authority": "PEGI",
+     "description": "PEGI 7",
+     "name": "PEGI_7",
+     "url": "https://image.api.playstation.com/grc/images/ratings/hd/pegi/7.png",
+     "url4k": "https://image.api.playstation.com/grc/images/ratings/4k/pegi/7.png",
+     "descriptors": [
+      {
+       "description": "Korku",
+       "name": "PEGI_FEAR",
+       "url": "https://image.api.playstation.com/grc/images/descriptors/hd/pegi/fear.png",
+       "url4k": "https://image.api.playstation.com/grc/images/descriptors/4k/pegi/fear.png"
+      },
+      {
+       "description": "Şiddet",
+       "name": "PEGI_VIOLENCE",
+       "url": "https://image.api.playstation.com/grc/images/descriptors/hd/pegi/violence.png",
+       "url4k": "https://image.api.playstation.com/grc/images/descriptors/4k/pegi/violence.png"
+      }
+     ],
+     "interactiveElements": []
+    },
+    "device": [
+     "PS4"
+    ],
+    "releaseDate": "2017-12-05T21:00:00Z",
+    "productId": "EP3717-CUSA10028_00-AHATINTIMEPS4000",
+    "streamingSupported": false
+   },
+   {
+    "conceptId": 10008945,
+    "name": "A Little to the Left PS4 & PS5",
+    "nameEn": "A Little to the Left PS4 & PS5",
+    "conceptUrl": "https://store.playstation.com/tr-tr/concept/10008945",
+    "imageUrl": "https://image.api.playstation.com/vulcan/ap/rnd/202311/1315/a3fb067df2661d37b9b68e7a9dbeb96f29bec879a354ad94.png",
+    "genre": [
+     "PUZZLE",
+     "FAMILY",
+     "BRAIN_TRAINING"
+    ],
+    "ageRating": {
+     "authority": "PEGI",
+     "description": "PEGI 3",
+     "name": "PEGI_3",
+     "url": "https://image.api.playstation.com/grc/images/ratings/hd/pegi/3.png",
+     "url4k": "https://image.api.playstation.com/grc/images/ratings/4k/pegi/3.png",
+     "descriptors": [
+      {
+       "description": "In-Game Purchases",
+       "name": "PEGI_IN_GAME_PURCHASES",
+       "url": "https://image.api.playstation.com/grc/images/descriptors/hd/pegi/ingamepurchases.png",
+       "url4k": "https://image.api.playstation.com/grc/images/descriptors/4k/pegi/ingamepurchases.png"
+      }
+     ],
+     "interactiveElements": []
+    },
+    "device": [
+     "PS4",
+     "PS5"
+    ],
+    "releaseDate": "2024-02-15T16:00:00Z",
+    "productId": "EP7072-PPSA17848_00-ALITTLETOTHELEFT",
+    "streamingSupported": false
+   }
+  ]
+ },
+ {
+  "catalogKey": "B",
+  "count": 23,
+  "games": [
+   {
+    "conceptId": 233064,
+    "name": "Back 4 Blood: Standard Edition PS4 & PS5",
+    "nameEn": "Back 4 Blood: Standard Edition PS4 & PS5",
+    "conceptUrl": "https://store.playstation.com/tr-tr/concept/233064",
+    "imageUrl": "https://image.api.playstation.com/vulcan/ap/rnd/202011/1900/sSZEg1DFAUrfWsA7ltLwpCdu.png",
+    "genre": [
+     "SHOOTER"
+    ],
+    "ageRating": {
+     "authority": "PEGI",
+     "description": "PEGI 18",
+     "name": "PEGI_18",
+     "url": "https://image.api.playstation.com/grc/images/ratings/hd/pegi/18.png",
+     "url4k": "https://image.api.playstation.com/grc/images/ratings/4k/pegi/18.png",
+     "descriptors": [
+      {
+       "description": "Dil",
+       "name": "PEGI_LANGUAGE",
+       "url": "https://image.api.playstation.com/grc/images/descriptors/hd/pegi/language.png",
+       "url4k": "https://image.api.playstation.com/grc/images/descriptors/4k/pegi/language.png"
+      },
+      {
+       "description": "Şiddet",
+       "name": "PEGI_VIOLENCE",
+       "url": "https://image.api.playstation.com/grc/images/descriptors/hd/pegi/violence.png",
+       "url4k": "https://image.api.playstation.com/grc/images/descriptors/4k/pegi/violence.png"
+      }
+     ],
+     "interactiveElements": []
+    },
+    "device": [
+     "PS4",
+     "PS5"
+    ],
+    "releaseDate": "2021-10-11T21:00:00Z",
+    "productId": "EP1018-PPSA01696_00-BACK4BLOOD000000",
+    "streamingSupported": false
+   },
+   {
+    "conceptId": 231064,
+    "name": "Bad North",
+    "nameEn": "Bad North",
+    "conceptUrl": "https://store.playstation.com/tr-tr/concept/231064",
+    "imageUrl": "https://image.api.playstation.com/cdn/EP2187/CUSA10606_00/r5YR5U3IHseGtOVh0RiRZDhGnjJtpXII.png",
+    "genre": [
+     "STRATEGY",
+     "PUZZLE",
+     "ACTION"
+    ],
+    "ageRating": {
+     "authority": "PEGI",
+     "description": "PEGI 12",
+     "name": "PEGI_12",
+     "url": "https://image.api.playstation.com/grc/images/ratings/hd/pegi/12.png",
+     "url4k": "https://image.api.playstation.com/grc/images/ratings/4k/pegi/12.png",
+     "descriptors": [
+      {
+       "description": "Şiddet",
+       "name": "PEGI_VIOLENCE",
+       "url": "https://image.api.playstation.com/grc/images/descriptors/hd/pegi/violence.png",
+       "url4k": "https://image.api.playstation.com/grc/images/descriptors/4k/pegi/violence.png"
+      }
+     ],
+     "interactiveElements": []
+    },
+    "device": [
+     "PS4"
+    ],
+    "releaseDate": "2018-08-27T21:00:00Z",
+    "productId": "EP2187-CUSA10606_00-BADNORTHDLGAME01",
+    "streamingSupported": false
+   }
+  ]
+ }
+]
