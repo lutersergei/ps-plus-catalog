@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"ps-extra/internal/scores"
 )
 
 // ListParams — параметры выборки игр для страницы.
@@ -60,11 +62,21 @@ func (g GameView) searchTerm() string {
 	return strings.TrimSpace(termCleaner.Replace(t))
 }
 
-// MetacriticURL, OpenCriticURL, HLTBURL — ссылки на поиск игры на ресурсе.
-// Работают всегда (в т.ч. когда оценка ещё не собрана).
+// MetacriticURL — прямая ссылка на страницу игры (slug строится из английского
+// названия той же логикой, что и при сборе оценки). Если slug пуст — поиск.
 func (g GameView) MetacriticURL() string {
+	t := g.TitleEn
+	if t == "" {
+		t = g.Title
+	}
+	if slug := scores.Slugify(scores.CleanTitle(t)); slug != "" {
+		return "https://www.metacritic.com/game/" + slug + "/"
+	}
 	return "https://www.metacritic.com/search/" + url.PathEscape(g.searchTerm()) + "/"
 }
+
+// OpenCriticURL, HLTBURL — ссылки на поиск игры на ресурсе (прямую страницу без
+// числового id не построить). Работают всегда, в т.ч. когда оценка не собрана.
 
 func (g GameView) OpenCriticURL() string {
 	return "https://opencritic.com/search?term=" + url.QueryEscape(g.searchTerm())
