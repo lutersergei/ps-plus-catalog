@@ -3,9 +3,21 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"ps-extra/internal/envfile"
 )
 
 func main() {
+	// Подхватываем .env (если есть): токены RapidAPI и пр. Реальные переменные
+	// окружения имеют приоритет над файлом.
+	envPath := ".env"
+	if p := os.Getenv("PS_EXTRA_ENV_FILE"); p != "" {
+		envPath = p
+	}
+	if err := envfile.Load(envPath); err != nil {
+		fmt.Fprintln(os.Stderr, "env load error:", err)
+	}
+
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "usage: ps-extra <sync|serve> [flags]")
 		os.Exit(2)

@@ -4,14 +4,12 @@ services:
     image: ps-extra:latest
     container_name: ps-extra
     ports:
-      # Публикуем только на localhost хоста. Для внешнего доступа поменяйте на
-      # "8080:8080" и поставьте перед сервисом reverse proxy с TLS.
-      - "127.0.0.1:8080:8080"
+      - "8080:8080"
     volumes:
       # БД (и при желании .env) хранятся на хосте, переживают пересоздание контейнера
       - ./data:/data
     env_file:
-      # ключи RapidAPI и опциональный Google OAuth. Скопируйте .env.example -> .env
+      # ключи RapidAPI (OPENCRITIC_API_KEYS). Скопируйте .env.example -> .env
       - path: .env
         required: false
     restart: unless-stopped

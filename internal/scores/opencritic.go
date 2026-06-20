@@ -3,6 +3,7 @@ package scores
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -14,6 +15,55 @@ import (
 
 const ocHost = "opencritic-api.p.rapidapi.com"
 
+// ErrAllKeysExhausted — все ключи RapidAPI исчерпали дневную квоту (429).
+var ErrAllKeysExhausted = errors.New("opencritic: все ключи RapidAPI исчерпали квоту")
+
+// KeyPool — набор ключей RapidAPI с ротацией: при 429 текущий ключ помечается
+// исчерпанным и берётся следующий.
+type KeyPool struct {
+	keys      []string
+	exhausted []bool
+	cur       int
+}
+
+// NewKeyPool создаёт пул из ключей (пустые отбрасываются).
+func NewKeyPool(keys []string) *KeyPool {
+	var clean []string
+	for _, k := range keys {
+		if k != "" {
+			clean = append(clean, k)
+		}
+	}
+	return &KeyPool{keys: clean, exhausted: make([]bool, len(clean))}
+}
+
+// Count — число ключей в пуле.
+func (p *KeyPool) Count() int { return len(p.keys) }
+
+// Empty — нет ни одного ключа.
+func (p *KeyPool) Empty() bool { return len(p.keys) == 0 }
+
+// current возвращает текущий не исчерпанный ключ.
+func (p *KeyPool) current() (string, bool) {
+	for i := 0; i < len(p.keys); i++ {
+		idx := (p.cur + i) % len(p.keys)
+		if !p.exhausted[idx] {
+			p.cur = idx
+			return p.keys[idx], true
+		}
+	}
+	return "", false
+}
+
+// markExhausted помечает текущий ключ исчерпанным и переходит к следующему.
+func (p *KeyPool) markExhausted() {
+	if len(p.keys) == 0 {
+		return
+	}
+	p.exhausted[p.cur] = true
+	p.cur = (p.cur + 1) % len(p.keys)
+}
+
 // ocSearchResult — элемент ответа /game/search.
 type ocSearchResult struct {
 	ID   int     `json:"id"`
@@ -22,9 +72,10 @@ type ocSearchResult struct {
 }
 
 // OpenCriticScore ищет игру по названию и возвращает её Top Critic Score.
-// found=false, если совпадений нет. apiKey — ключ RapidAPI.
-func OpenCriticScore(ctx context.Context, c *http.Client, apiKey, title string) (score int, found bool, err error) {
-	results, err := ocSearch(ctx, c, apiKey, CleanTitle(title))
+// found=false, если совпадений нет. Ключи берутся из пула (с ротацией при 429);
+// если все ключи исчерпаны — вернётся ErrAllKeysExhausted.
+func OpenCriticScore(ctx context.Context, c *http.Client, pool *KeyPool, title string) (score int, found bool, err error) {
+	results, err := ocSearch(ctx, c, pool, CleanTitle(title))
 	if err != nil {
 		return 0, false, err
 	}
@@ -32,7 +83,7 @@ func OpenCriticScore(ctx context.Context, c *http.Client, apiKey, title string) 
 	if !ok {
 		return 0, false, nil
 	}
-	raw, err := ocGet(ctx, c, apiKey, fmt.Sprintf("/game/%d", best.ID))
+	raw, err := ocGet(ctx, c, pool, fmt.Sprintf("/game/%d", best.ID))
 	if err != nil {
 		return 0, false, err
 	}
@@ -73,8 +124,8 @@ func parseOpenCriticGame(raw []byte) (int, error) {
 	return int(math.Round(g.TopCriticScore)), nil
 }
 
-func ocSearch(ctx context.Context, c *http.Client, apiKey, title string) ([]ocSearchResult, error) {
-	raw, err := ocGet(ctx, c, apiKey, "/game/search?criteria="+url.QueryEscape(title))
+func ocSearch(ctx context.Context, c *http.Client, pool *KeyPool, title string) ([]ocSearchResult, error) {
+	raw, err := ocGet(ctx, c, pool, "/game/search?criteria="+url.QueryEscape(title))
 	if err != nil {
 		return nil, err
 	}
@@ -85,43 +136,68 @@ func ocSearch(ctx context.Context, c *http.Client, apiKey, title string) ([]ocSe
 	return results, nil
 }
 
-// ocGet выполняет GET к OpenCritic с повтором при 429/5xx.
-func ocGet(ctx context.Context, c *http.Client, apiKey, path string) ([]byte, error) {
-	const maxAttempts = 3
-	var lastErr error
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+ocHost+path, nil)
-		if err != nil {
-			return nil, err
+// ocGet выполняет GET к OpenCritic: при 429 ротирует ключ, при 5xx/сетевой
+// ошибке повторяет с backoff на текущем ключе.
+func ocGet(ctx context.Context, c *http.Client, pool *KeyPool, path string) ([]byte, error) {
+	const maxRetries = 3
+	for {
+		key, ok := pool.current()
+		if !ok {
+			return nil, ErrAllKeysExhausted
 		}
-		req.Header.Set("X-RapidAPI-Key", apiKey)
-		req.Header.Set("X-RapidAPI-Host", ocHost)
-
-		resp, err := c.Do(req)
-		if err != nil {
-			lastErr = err
-		} else {
-			body, readErr := io.ReadAll(resp.Body)
-			resp.Body.Close()
+		var lastErr error
+		retry := false
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			body, status, err := ocDo(ctx, c, key, path)
 			switch {
-			case resp.StatusCode == http.StatusOK:
-				if readErr != nil {
-					return nil, readErr
-				}
+			case err == nil && status == http.StatusOK:
 				return body, nil
-			case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
-				lastErr = fmt.Errorf("opencritic status %d", resp.StatusCode)
+			case status == http.StatusTooManyRequests:
+				pool.markExhausted() // квота этого ключа кончилась — берём следующий
+				retry = true
+			case status >= 500 || err != nil:
+				if err != nil {
+					lastErr = err
+				} else {
+					lastErr = fmt.Errorf("opencritic status %d", status)
+				}
 			default:
-				return nil, fmt.Errorf("opencritic status %d: %s", resp.StatusCode, string(body))
+				return nil, fmt.Errorf("opencritic status %d: %s", status, string(body))
+			}
+			if retry {
+				break // выходим во внешний цикл за новым ключом
+			}
+			if attempt < maxRetries {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(time.Duration(attempt) * time.Second):
+				}
 			}
 		}
-		if attempt < maxAttempts {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(time.Duration(attempt) * time.Second):
-			}
+		if retry {
+			continue
 		}
+		return nil, lastErr
 	}
-	return nil, lastErr
+}
+
+// ocDo делает один запрос и возвращает тело, статус и ошибку транспорта.
+func ocDo(ctx context.Context, c *http.Client, key, path string) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+ocHost+path, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("X-RapidAPI-Key", key)
+	req.Header.Set("X-RapidAPI-Host", ocHost)
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, resp.StatusCode, readErr
+	}
+	return body, resp.StatusCode, nil
 }

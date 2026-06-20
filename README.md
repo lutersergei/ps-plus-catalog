@@ -34,14 +34,20 @@ go build -o ps-extra .
 
 ### 1. Собрать данные
 
-Ключ OpenCritic (RapidAPI) передаётся через переменную окружения — в коде его нет:
+Ключи OpenCritic (RapidAPI) задаются через окружение или файл `.env` — в коде их нет.
+Скопируйте шаблон и впишите свои ключи:
 
 ```sh
-export OPENCRITIC_API_KEY='ваш_ключ_RapidAPI'
+cp .env.example .env
+# в .env: OPENCRITIC_API_KEYS=key1,key2,key3   (несколько — через запятую)
 ./ps-extra sync                 # каталог + оценки в ps-extra.db
 ```
 
-Без ключа соберётся каталог и только Metacritic-оценки:
+**Несколько ключей**: их дневные квоты суммируются — при ответе `429` на одном
+ключе `sync` автоматически переходит к следующему. Можно задать и одиночный
+`OPENCRITIC_API_KEY`. Реальные переменные окружения имеют приоритет над `.env`.
+
+Без ключей соберётся каталог и только Metacritic + HowLongToBeat:
 
 ```sh
 ./ps-extra sync
@@ -53,14 +59,15 @@ export OPENCRITIC_API_KEY='ваш_ключ_RapidAPI'
 |---|---|---|
 | `-db` | `ps-extra.db` | путь к файлу SQLite |
 | `-skip-scores` | `false` | обновить только каталог, без оценок |
-| `-max-oc` | `25` | максимум обращений к OpenCritic за запуск (лимит плана) |
+| `-max-oc` | `25` | лимит игр OpenCritic **на каждый ключ** за запуск (суммарно ×кол-во ключей) |
+| `-max-hltb` | `0` | лимит игр HowLongToBeat за запуск (0 = без лимита) |
+| `-recheck-missing` | `false` | перепроверить игры без оценки |
 | `-refresh-days` | `30` | не перезапрашивать оценки свежее N дней |
 
-> **Про лимиты OpenCritic.** Бесплатный план RapidAPI — **25 поисков/день**.
-> В каталоге ~449 игр, поэтому за один запуск собираются оценки максимум для
-> `-max-oc` игр (по умолчанию 25), а остальные подтянутся при следующих запусках
-> (благодаря кэшу и `scores_updated_at`). Полный сбор занимает несколько дней.
-> Metacritic не лимитирован — собирается для всех обрабатываемых за запуск игр.
+> **Про лимиты OpenCritic.** Бесплатный план RapidAPI — **25 поисков/день на ключ**.
+> За запуск собираются оценки максимум для `-max-oc` × (число ключей) игр, остальные
+> подтянутся при следующих запусках (кэш по `oc_checked_at`). Metacritic и HLTB не
+> лимитированы ключом и собираются для всех обрабатываемых за запуск игр.
 
 ### 2. Показать страницу
 
@@ -71,6 +78,29 @@ export OPENCRITIC_API_KEY='ваш_ключ_RapidAPI'
 
 Откройте `http://localhost:8080` в браузере.
 
+## Docker
+
+```sh
+cp .env.example .env            # впишите ключи RapidAPI (можно несколько)
+
+# веб-сервер на http://localhost:8080, БД хранится в ./data на хосте
+docker compose up -d --build
+
+# сбор данных (каталог + оценки) — отдельный одноразовый запуск:
+docker compose run --rm ps-extra sync
+```
+
+Образ — многостадийный (статический бинарь на distroless, без CGO). Том `./data`
+хранит `ps-extra.db` между перезапусками; ключи берутся из `.env` (через `env_file`).
+
+Без compose:
+
+```sh
+docker build -t ps-extra .
+docker run --rm -v "$PWD/data:/data" --env-file .env ps-extra sync   # собрать
+docker run --rm -p 8080:8080 -v "$PWD/data:/data" ps-extra            # показать
+```
+
 ## Структура
 
 ```
@@ -79,8 +109,10 @@ sync.go                     команда sync: каталог + сбор оц�
 serve.go                    команда serve: HTTP-хендлер
 templates/index.html        страница (встроена через go:embed)
 internal/psstore/           клиент и парсер каталога PS Plus
-internal/scores/            провайдеры Metacritic / OpenCritic + нормализация названий
+internal/scores/            провайдеры Metacritic / OpenCritic (пул ключей) / HowLongToBeat
 internal/store/             SQLite: схема, запись, выборка для отображения
+internal/envfile/           чтение .env (несколько ключей RapidAPI)
+Dockerfile, docker-compose.yml, .env.example
 docs/research/              находки по источникам данных (эндпоинты, форматы)
 testdata/                   фикстуры реальных ответов
 ```

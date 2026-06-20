@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"ps-extra/internal/psstore"
@@ -19,7 +21,7 @@ func runSync(args []string) error {
 	fs := flag.NewFlagSet("sync", flag.ExitOnError)
 	dbPath := fs.String("db", "ps-extra.db", "путь к файлу SQLite")
 	skipScores := fs.Bool("skip-scores", false, "только обновить каталог, без оценок")
-	maxOC := fs.Int("max-oc", 25, "максимум обращений к OpenCritic за запуск (лимит плана)")
+	maxOC := fs.Int("max-oc", 25, "лимит игр OpenCritic на каждый ключ за запуск (суммарно ×кол-во ключей)")
 	maxHLTB := fs.Int("max-hltb", 0, "максимум игр для HowLongToBeat за запуск (0 = без ограничения; HLTB троттлит большие пачки)")
 	refreshDays := fs.Int("refresh-days", 30, "не перезапрашивать оценки свежее N дней")
 	recheckMissing := fs.Bool("recheck-missing", false, "сбросить отметки проверки у игр без оценки и перепроверить их")
@@ -165,24 +167,30 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 		time.Sleep(700 * time.Millisecond) // вежливо к metacritic.com
 	}
 
-	// --- OpenCritic: только при наличии ключа, не больше maxOC за запуск ---
-	apiKey := os.Getenv("OPENCRITIC_API_KEY")
-	if apiKey == "" {
-		fmt.Println("OPENCRITIC_API_KEY не задан — OpenCritic пропущен (запустите с ключом, чтобы добрать)")
+	// --- OpenCritic: один или несколько ключей RapidAPI с ротацией при 429 ---
+	pool := scores.NewKeyPool(openCriticKeys())
+	if pool.Empty() {
+		fmt.Println("ключи OpenCritic не заданы — OpenCritic пропущен (см. .env / OPENCRITIC_API_KEYS)")
 		return nil
 	}
+	// maxOC трактуется как лимит на КАЖДЫЙ ключ → суммарно maxOC*кол-во ключей.
+	effMax := maxOC * pool.Count()
 	ocTargets, err := store.GamesNeedingOpenCritic(db, staleBefore)
 	if err != nil {
 		return err
 	}
-	if len(ocTargets) > maxOC {
-		ocTargets = ocTargets[:maxOC]
+	if effMax > 0 && len(ocTargets) > effMax {
+		ocTargets = ocTargets[:effMax]
 	}
-	fmt.Printf("OpenCritic — игр за этот запуск: %d (осталось добрать в следующие дни)\n", len(ocTargets))
+	fmt.Printf("OpenCritic — ключей: %d, игр за этот запуск: %d\n", pool.Count(), len(ocTargets))
 	for i, t := range ocTargets {
-		score, found, err := scores.OpenCriticScore(ctx, client, apiKey, t.TitleEn)
+		score, found, err := scores.OpenCriticScore(ctx, client, pool, t.TitleEn)
+		if errors.Is(err, scores.ErrAllKeysExhausted) {
+			fmt.Println("  все ключи OpenCritic исчерпали дневную квоту — остановка (добёрём в следующий запуск)")
+			break
+		}
 		if err != nil {
-			// сбой/429/5xx — НЕ помечаем проверенным и НЕ тратим попытку: повторим позже
+			// сбой/5xx — НЕ помечаем проверенным: повторим позже
 			log.Printf("[oc] %s: %v (повторим позже)", t.Title, err)
 		} else {
 			var oc sql.NullInt64
@@ -197,4 +205,25 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 		time.Sleep(300 * time.Millisecond) // ≤4 req/s
 	}
 	return nil
+}
+
+// openCriticKeys собирает ключи RapidAPI из окружения: OPENCRITIC_API_KEYS
+// (через запятую/пробел/перенос строки) плюс одиночный OPENCRITIC_API_KEY.
+func openCriticKeys() []string {
+	seen := map[string]bool{}
+	var keys []string
+	add := func(k string) {
+		k = strings.TrimSpace(k)
+		if k != "" && !seen[k] {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+	}
+	for _, k := range strings.FieldsFunc(os.Getenv("OPENCRITIC_API_KEYS"), func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\n' || r == '\t' || r == ';'
+	}) {
+		add(k)
+	}
+	add(os.Getenv("OPENCRITIC_API_KEY"))
+	return keys
 }

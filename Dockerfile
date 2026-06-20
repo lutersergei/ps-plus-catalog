@@ -1,5 +1,5 @@
 # --- build stage ---
-FROM golang:1.25.12 AS build
+FROM golang:1.25 AS build
 WORKDIR /src
 
 # Сначала зависимости (кэшируется, пока go.mod/go.sum не меняются)
@@ -9,15 +9,14 @@ RUN go mod download
 # Исходники (шаблон index.html встраивается через go:embed)
 COPY . .
 # Чистый Go SQLite (modernc) → CGO не нужен, бинарь статический
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ps-extra ./cmd/ps-extra
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ps-extra .
 
 # --- runtime stage ---
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build --chown=65532:65532 /out/ps-extra /usr/local/bin/ps-extra
-# /data — рабочая папка: сюда ложится ps-extra.db и (опционально) .env.
-# Том должен быть доступен на запись UID 65532: mkdir -p data && chown 65532:65532 data
+# root (не :nonroot): сервису нужно писать ps-extra.db в смонтированный том /data
+FROM gcr.io/distroless/static-debian12
+# /data — рабочая папка: сюда ложится ps-extra.db и (опционально) .env
 WORKDIR /data
-USER 65532:65532
+COPY --from=build /out/ps-extra /usr/local/bin/ps-extra
 
 EXPOSE 8080
 ENTRYPOINT ["ps-extra"]
