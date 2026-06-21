@@ -55,6 +55,10 @@
   .lang-checks { display:flex; flex-direction:column; gap:6px; padding-top:4px; }
   .lang-check { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; }
   input[type=checkbox] { width:14px; height:14px; accent-color:var(--accent); cursor:pointer; }
+  .lang-badges { display:flex; gap:4px; flex-wrap:wrap; margin-top:2px; }
+  .lang-badge { font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; letter-spacing:.3px; }
+  .lang-badge.sub   { background:#0f2d0f; color:#5cb85c; border:1px solid #1e4d1e; }
+  .lang-badge.voice { background:#0f1f2d; color:#5b9bd5; border:1px solid #1e3a4d; }
 </style>
 </head>
 <body>
@@ -172,6 +176,10 @@
       <div class="title"><a href="{{.StoreURL}}" target="_blank" rel="noopener">{{.Title}}</a></div>
       <div class="meta">{{if .ReleaseYear}}{{.ReleaseYear}}{{end}}{{if .Platforms}} · {{.Platforms}}{{end}}</div>
       <div class="genres">{{range .Genres}}<span>{{.}}</span>{{end}}</div>
+      {{if or .RuSub .RuVoice}}<div class="lang-badges">
+        {{if .RuSub}}<span class="lang-badge sub">RU Sub</span>{{end}}
+        {{if .RuVoice}}<span class="lang-badge voice">RU Дубляж</span>{{end}}
+      </div>{{end}}
       <div class="scores">
         <a class="score {{if not .Metacritic.Valid}}na{{end}}" href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">
           <div class="v">{{if .Metacritic.Valid}}{{.Metacritic.Int64}}{{else}}—{{end}}</div>

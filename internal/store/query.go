@@ -42,6 +42,8 @@ type GameView struct {
 	Average     sql.NullFloat64
 	HLTBMainSec sql.NullInt64 // Main + Sides, секунды
 	HLTBRating  sql.NullInt64 // рейтинг HLTB (0–100)
+	RuSub       bool          // есть русские субтитры/интерфейс
+	RuVoice     bool          // есть русская озвучка
 }
 
 // HLTBHours возвращает Main+Sides в часах (для шаблона), 0 если нет данных.
@@ -244,7 +246,7 @@ func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
 	query := `
 SELECT id, title, COALESCE(title_en,''), COALESCE(release_year,0), COALESCE(platforms,''), COALESCE(image_url,''),
        COALESCE(store_url,''), metacritic_score, opencritic_score, average_score,
-       hltb_main_extra, hltb_rating
+       hltb_main_extra, hltb_rating, COALESCE(screen_langs,''), COALESCE(spoken_langs,'')
 FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
 	args = append(args, p.PageSize, (p.Page-1)*p.PageSize)
 
@@ -257,11 +259,14 @@ FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
 	var ids []string
 	for rows.Next() {
 		var g GameView
+		var screenLangs, spokenLangs string
 		if err := rows.Scan(&g.ID, &g.Title, &g.TitleEn, &g.ReleaseYear, &g.Platforms, &g.ImageURL,
 			&g.StoreURL, &g.Metacritic, &g.OpenCritic, &g.Average,
-			&g.HLTBMainSec, &g.HLTBRating); err != nil {
+			&g.HLTBMainSec, &g.HLTBRating, &screenLangs, &spokenLangs); err != nil {
 			return res, err
 		}
+		g.RuSub   = strings.Contains(screenLangs, `"ru"`)
+		g.RuVoice = strings.Contains(spokenLangs, `"ru"`)
 		res.Games = append(res.Games, g)
 		ids = append(ids, g.ID)
 	}
