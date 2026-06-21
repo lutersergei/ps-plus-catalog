@@ -24,7 +24,10 @@ CREATE TABLE IF NOT EXISTS games (
 	hltb_rating       INTEGER,   -- пользовательский рейтинг HLTB (0–100)
 	mc_checked_at     TIMESTAMP,
 	oc_checked_at     TIMESTAMP,
-	hltb_checked_at   TIMESTAMP
+	hltb_checked_at   TIMESTAMP,
+	spoken_langs      TEXT,      -- JSON-массив кодов языков озвучки (["en","ru",...])
+	screen_langs      TEXT,      -- JSON-массив кодов языков субтитров/интерфейса
+	langs_checked_at  TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS game_genres (
 	game_id TEXT NOT NULL,
@@ -40,6 +43,9 @@ var migrations = []string{
 	`ALTER TABLE games ADD COLUMN hltb_rating INTEGER`,
 	`ALTER TABLE games ADD COLUMN hltb_checked_at TIMESTAMP`,
 	`ALTER TABLE games ADD COLUMN active INTEGER NOT NULL DEFAULT 1`,
+	`ALTER TABLE games ADD COLUMN spoken_langs TEXT`,
+	`ALTER TABLE games ADD COLUMN screen_langs TEXT`,
+	`ALTER TABLE games ADD COLUMN langs_checked_at TIMESTAMP`,
 }
 
 // Open открывает базу SQLite по указанному пути и применяет миграции.

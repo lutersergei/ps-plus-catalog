@@ -23,6 +23,8 @@ type ListParams struct {
 	Order         string   // "asc" | "desc"
 	Page          int      // с 1
 	PageSize      int
+	RuSubtitles   bool     // только игры с русскими субтитрами/интерфейсом
+	RuVoice       bool     // только игры с русской озвучкой
 }
 
 // GameView — игра для отображения.
@@ -200,6 +202,14 @@ func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
 	if p.HLTBToHours > 0 {
 		where = append(where, "hltb_main_extra <= ?")
 		args = append(args, p.HLTBToHours*3600)
+	}
+
+	// Фильтр по языку: ищем код "ru" в JSON-массиве (безопасно — двухбуквенный код в кавычках)
+	if p.RuSubtitles {
+		where = append(where, `screen_langs LIKE '%"ru"%'`)
+	}
+	if p.RuVoice {
+		where = append(where, `spoken_langs LIKE '%"ru"%'`)
 	}
 
 	whereSQL := ""

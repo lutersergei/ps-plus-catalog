@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -117,6 +118,52 @@ func GamesNeedingOpenCritic(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, e
 // GamesNeedingHLTB — игры без свежей проверки HowLongToBeat.
 func GamesNeedingHLTB(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, error) {
 	return gamesNeeding(db, "hltb_checked_at", staleBefore)
+}
+
+// LangTarget — игра, которой нужны данные о языках.
+type LangTarget struct {
+	ID         string
+	ConceptURL string // store_url из каталога
+}
+
+// GamesNeedingLangs возвращает активные игры без свежей проверки языков.
+func GamesNeedingLangs(db *sql.DB, staleBefore time.Time) ([]LangTarget, error) {
+	rows, err := db.Query(`
+SELECT id, COALESCE(store_url, '')
+FROM games
+WHERE active = 1
+  AND store_url IS NOT NULL AND store_url != ''
+  AND (langs_checked_at IS NULL OR langs_checked_at < ?)
+ORDER BY title`, staleBefore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []LangTarget
+	for rows.Next() {
+		var t LangTarget
+		if err := rows.Scan(&t.ID, &t.ConceptURL); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// UpdateLangs записывает языки озвучки и субтитров (JSON-массивы) и помечает время проверки.
+// Пустые срезы (нет данных) хранятся как "[]", не NULL — чтобы не повторять проверку.
+func UpdateLangs(db *sql.DB, id string, spoken, screen []string) error {
+	if spoken == nil {
+		spoken = []string{}
+	}
+	if screen == nil {
+		screen = []string{}
+	}
+	spokenJSON, _ := json.Marshal(spoken)
+	screenJSON, _ := json.Marshal(screen)
+	_, err := db.Exec(`UPDATE games SET spoken_langs = ?, screen_langs = ?, langs_checked_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		string(spokenJSON), string(screenJSON), id)
+	return err
 }
 
 // UpdateHLTB записывает время Main+Sides (сек) и рейтинг HLTB (0–100), помечает

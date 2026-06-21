@@ -52,6 +52,9 @@
   .pager .cur { background:var(--accent); border-color:var(--accent); }
   .pager .disabled { opacity:.4; pointer-events:none; }
   .empty { padding:60px 24px; text-align:center; color:var(--muted); }
+  .lang-checks { display:flex; flex-direction:column; gap:6px; padding-top:4px; }
+  .lang-check { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; }
+  input[type=checkbox] { width:14px; height:14px; accent-color:var(--accent); cursor:pointer; }
 </style>
 </head>
 <body>
@@ -140,6 +143,20 @@
       <option value="asc"  {{if eq $o "asc"}}selected{{end}}>По возрастанию</option>
       <option value="desc" {{if eq $o "desc"}}selected{{end}}>По убыванию</option>
     </select>
+  </div>
+
+  <div class="field">
+    <label>Русский язык</label>
+    <div class="lang-checks">
+      <label class="lang-check">
+        <input type="checkbox" name="ru_sub" value="1" {{if .Params.RuSubtitles}}checked{{end}}>
+        Субтитры
+      </label>
+      <label class="lang-check">
+        <input type="checkbox" name="ru_voice" value="1" {{if .Params.RuVoice}}checked{{end}}>
+        Озвучка
+      </label>
+    </div>
   </div>
 
   <button type="submit">Применить</button>

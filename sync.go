@@ -25,7 +25,8 @@ func runSync(args []string) error {
 	skipScores := fs.Bool("skip-scores", false, "только обновить каталог, без оценок")
 	allowShrink := fs.Bool("allow-shrink", false, "разрешить применить снимок каталога, даже если он намного меньше текущего (защита от частичного ответа upstream)")
 	maxOC := fs.Int("max-oc", 25, "лимит игр OpenCritic на каждый ключ за запуск (суммарно ×кол-во ключей)")
-	maxHLTB := fs.Int("max-hltb", 0, "максимум игр для HowLongToBeat за запуск (0 = без ограничения; HLTB троттлит большие пачки)")
+	maxHLTB  := fs.Int("max-hltb", 0, "максимум игр для HowLongToBeat за запуск (0 = без ограничения; HLTB троттлит большие пачки)")
+	maxLangs := fs.Int("max-langs", 0, "максимум игр для сбора языков (PS Store) за запуск (0 = без ограничения)")
 	refreshDays := fs.Int("refresh-days", 30, "не перезапрашивать оценки свежее N дней")
 	recheckMissing := fs.Bool("recheck-missing", false, "сбросить отметки проверки у игр без оценки и перепроверить их")
 	if err := fs.Parse(args); err != nil {
@@ -64,7 +65,40 @@ func runSync(args []string) error {
 	if err := syncHLTB(ctx, db, client, *refreshDays, *maxHLTB); err != nil {
 		return err
 	}
+	if err := syncLangs(ctx, db, client, *refreshDays, *maxLangs); err != nil {
+		return err
+	}
 	return store.RecomputeAllAverages(db)
+}
+
+// syncLangs собирает языки озвучки и субтитров для игр со страниц PS Store.
+func syncLangs(ctx context.Context, db *sql.DB, client *http.Client, refreshDays, maxLangs int) error {
+	staleBefore := time.Now().AddDate(0, 0, -refreshDays)
+	targets, err := store.GamesNeedingLangs(db, staleBefore)
+	if err != nil {
+		return err
+	}
+	if maxLangs > 0 && len(targets) > maxLangs {
+		targets = targets[:maxLangs]
+	}
+	fmt.Printf("Языки (PS Store) — игр к проверке: %d\n", len(targets))
+	for i, t := range targets {
+		spoken, screen, err := psstore.FetchLangs(ctx, client, t.ConceptURL)
+		if err != nil {
+			log.Printf("[langs] %s: %v (повторим позже)", t.ID, err)
+		} else {
+			if err := store.UpdateLangs(db, t.ID, spoken, screen); err != nil {
+				return fmt.Errorf("update langs %s: %w", t.ID, err)
+			}
+		}
+		if (i+1)%10 == 0 {
+			fmt.Printf("  Языки %d/%d\n", i+1, len(targets))
+		}
+		if err := sleepCtx(ctx, 500*time.Millisecond); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // sleepCtx ждёт d или отмену контекста — паузы между запросами к источникам

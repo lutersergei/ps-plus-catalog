@@ -137,6 +137,8 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 		Order:         orDefault(q.Get("order"), "asc"),
 		Page:          atoiDefault(q.Get("page"), 1),
 		PageSize:      pageSize,
+		RuSubtitles:   q.Get("ru_sub") == "1",
+		RuVoice:       q.Get("ru_voice") == "1",
 	}
 	// Нормализуем параметры здесь, до построения формы и ссылок пагинации, чтобы
 	// отображаемые значения и query в ссылках совпадали с тем, что уйдёт в SQL
@@ -192,6 +194,12 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 	}
 	base.Set("sort", p.Sort)
 	base.Set("order", p.Order)
+	if p.RuSubtitles {
+		base.Set("ru_sub", "1")
+	}
+	if p.RuVoice {
+		base.Set("ru_voice", "1")
+	}
 
 	data := pageData{
 		Result:    result,
