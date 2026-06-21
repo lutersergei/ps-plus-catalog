@@ -10,7 +10,7 @@
   body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 -apple-system,Segoe UI,Roboto,sans-serif; }
   header { padding:20px 24px; border-bottom:1px solid #232c44; }
   h1 { margin:0; font-size:20px; }
-  .sub { color:var(--muted); font-size:13px; margin-top:4px; }
+  header .sub { color:var(--muted); font-size:13px; margin-top:4px; }
   form.filters { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:16px 24px; background:#121a2c; }
   .field { display:flex; flex-direction:column; gap:4px; }
   .field label { font-size:12px; color:var(--muted); }
@@ -55,10 +55,10 @@
   .lang-checks { display:flex; flex-direction:column; gap:6px; padding-top:4px; }
   .lang-check { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; }
   input[type=checkbox] { width:14px; height:14px; accent-color:var(--accent); cursor:pointer; }
-  .lang-badges { display:flex; gap:4px; flex-wrap:wrap; margin-top:2px; align-items:center; }
-  .lang-badge { font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; letter-spacing:.3px; line-height:1.4; display:inline-flex; align-items:center; }
-  .lang-badge.sub   { background:#0f2d0f; color:#5cb85c; border:1px solid #1e4d1e; }
-  .lang-badge.voice { background:#0f1f2d; color:#5b9bd5; border:1px solid #1e3a4d; }
+  .lang-badges { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin-top:2px; }
+  .lang-badge { display:flex; align-items:center; justify-content:center; height:24px; padding:0 6px; font-size:10px; font-weight:700; line-height:1; border-radius:4px; letter-spacing:.3px; text-align:center; }
+  .lang-badge.sub   { background:#102d2c; color:#5fd3c8; border:1px solid #21615d; }
+  .lang-badge.voice { background:#251b3d; color:#b69cff; border:1px solid #55417f; }
 </style>
 </head>
 <body>
@@ -177,8 +177,8 @@
       <div class="meta">{{if .ReleaseYear}}{{.ReleaseYear}}{{end}}{{if .Platforms}} · {{.Platforms}}{{end}}</div>
       <div class="genres">{{range .Genres}}<span>{{.}}</span>{{end}}</div>
       {{if or .RuSub .RuVoice}}<div class="lang-badges">
-        {{if .RuSub}}<span class="lang-badge sub">RU Sub</span>{{end}}
-        {{if .RuVoice}}<span class="lang-badge voice">RU Дубляж</span>{{end}}
+        {{if .RuSub}}<span class="lang-badge sub">RU SUB</span>{{end}}
+        {{if .RuVoice}}<span class="lang-badge voice">RU VOICE</span>{{end}}
       </div>{{end}}
       <div class="scores">
         <a class="score {{if not .Metacritic.Valid}}na{{end}}" href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">
