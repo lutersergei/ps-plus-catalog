@@ -19,9 +19,12 @@ CREATE TABLE IF NOT EXISTS games (
 	active            INTEGER NOT NULL DEFAULT 1,
 	metacritic_score  INTEGER,
 	opencritic_score  INTEGER,
+	opencritic_url    TEXT,
 	average_score     REAL,
 	hltb_main_extra   INTEGER,   -- время прохождения Main + Sides, в секундах
 	hltb_rating       INTEGER,   -- пользовательский рейтинг HLTB (0–100)
+	hltb_id           INTEGER,
+	hltb_url          TEXT,
 	mc_checked_at     TIMESTAMP,
 	oc_checked_at     TIMESTAMP,
 	hltb_checked_at   TIMESTAMP,
@@ -41,11 +44,14 @@ CREATE INDEX IF NOT EXISTS idx_game_genres_genre ON game_genres(genre);
 var migrations = []string{
 	`ALTER TABLE games ADD COLUMN hltb_main_extra INTEGER`,
 	`ALTER TABLE games ADD COLUMN hltb_rating INTEGER`,
+	`ALTER TABLE games ADD COLUMN hltb_id INTEGER`,
+	`ALTER TABLE games ADD COLUMN hltb_url TEXT`,
 	`ALTER TABLE games ADD COLUMN hltb_checked_at TIMESTAMP`,
 	`ALTER TABLE games ADD COLUMN active INTEGER NOT NULL DEFAULT 1`,
 	`ALTER TABLE games ADD COLUMN spoken_langs TEXT`,
 	`ALTER TABLE games ADD COLUMN screen_langs TEXT`,
 	`ALTER TABLE games ADD COLUMN langs_checked_at TIMESTAMP`,
+	`ALTER TABLE games ADD COLUMN opencritic_url TEXT`,
 }
 
 // Open открывает базу SQLite по указанному пути и применяет миграции.

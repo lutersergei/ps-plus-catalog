@@ -37,6 +37,16 @@ func TestBestMatch(t *testing.T) {
 			wantFound: false,
 		},
 		{
+			name:  "перебирает кандидатов после ближайшего нерелевантного",
+			title: "Marvel's Guardians of the Galaxy PS4 & PS5",
+			results: []ocSearchResult{
+				{ID: 1, Name: "Marvel's Guardians of the Galaxy: The Telltale Series", Dist: 0.38},
+				{ID: 2, Name: "Guardians of the Galaxy", Dist: 0.39},
+			},
+			wantID:    2,
+			wantFound: true,
+		},
+		{
 			name:      "близкий по токенам, но слишком далёкий dist отвергается",
 			title:     "Hades",
 			results:   []ocSearchResult{{ID: 3, Name: "Hades II", Dist: 5.0}},
@@ -74,7 +84,7 @@ func TestParseOpenCriticGame(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			score, found, err := parseOpenCriticGame([]byte(c.raw))
+			score, found, pageURL, err := parseOpenCriticGame([]byte(c.raw))
 			if (err != nil) != c.wantErr {
 				t.Fatalf("err=%v, wantErr=%v", err, c.wantErr)
 			}
@@ -84,6 +94,25 @@ func TestParseOpenCriticGame(t *testing.T) {
 			if found && score != c.wantScore {
 				t.Errorf("score=%d, ждали %d", score, c.wantScore)
 			}
+			if found && pageURL != "" {
+				t.Errorf("url=%q, ждали пустой url", pageURL)
+			}
 		})
+	}
+}
+
+func TestParseOpenCriticGameURL(t *testing.T) {
+	score, found, pageURL, err := parseOpenCriticGame([]byte(`{
+		"topCriticScore": 84.6,
+		"url": "https://opencritic.com/game/4503/assassins-creed-origins"
+	}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !found || score != 85 {
+		t.Fatalf("score=%d found=%v, ждали 85 true", score, found)
+	}
+	if pageURL != "https://opencritic.com/game/4503/assassins-creed-origins" {
+		t.Fatalf("url=%q", pageURL)
 	}
 }

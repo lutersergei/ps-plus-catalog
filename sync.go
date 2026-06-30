@@ -25,7 +25,7 @@ func runSync(args []string) error {
 	skipScores := fs.Bool("skip-scores", false, "только обновить каталог, без оценок")
 	allowShrink := fs.Bool("allow-shrink", false, "разрешить применить снимок каталога, даже если он намного меньше текущего (защита от частичного ответа upstream)")
 	maxOC := fs.Int("max-oc", 25, "лимит игр OpenCritic на каждый ключ за запуск (суммарно ×кол-во ключей)")
-	maxHLTB  := fs.Int("max-hltb", 0, "максимум игр для HowLongToBeat за запуск (0 = без ограничения; HLTB троттлит большие пачки)")
+	maxHLTB := fs.Int("max-hltb", 0, "максимум игр для HowLongToBeat за запуск (0 = без ограничения; HLTB троттлит большие пачки)")
 	maxLangs := fs.Int("max-langs", 0, "максимум игр для сбора языков (PS Store) за запуск (0 = без ограничения)")
 	refreshDays := fs.Int("refresh-days", 30, "не перезапрашивать оценки свежее N дней")
 	recheckMissing := fs.Bool("recheck-missing", false, "сбросить отметки проверки у игр без оценки и перепроверить их")
@@ -139,18 +139,25 @@ func syncHLTB(ctx context.Context, db *sql.DB, client *http.Client, refreshDays,
 			// HLTB вернул игры, но нужной среди них нет — достоверно «нет на HLTB».
 			// Кэшируем промах (NULL-значения + отметка проверки), чтобы не дёргать
 			// HLTB по этой игре каждый запуск (см. -refresh-days).
-			if err := store.UpdateHLTB(db, t.ID, sql.NullInt64{}, sql.NullInt64{}); err != nil {
+			if err := store.UpdateHLTB(db, t.ID, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{}, sql.NullString{}); err != nil {
 				return fmt.Errorf("update hltb %s: %w", t.ID, err)
 			}
 		default:
-			var mainExtra, rating sql.NullInt64
+			var mainExtra, rating, hltbID sql.NullInt64
+			var hltbURL sql.NullString
 			if res.MainExtraSeconds > 0 {
 				mainExtra = sql.NullInt64{Int64: int64(res.MainExtraSeconds), Valid: true}
 			}
 			if res.Rating > 0 {
 				rating = sql.NullInt64{Int64: int64(res.Rating), Valid: true}
 			}
-			if err := store.UpdateHLTB(db, t.ID, mainExtra, rating); err != nil {
+			if res.GameID > 0 {
+				hltbID = sql.NullInt64{Int64: int64(res.GameID), Valid: true}
+			}
+			if res.PageURL != "" {
+				hltbURL = sql.NullString{String: res.PageURL, Valid: true}
+			}
+			if err := store.UpdateHLTB(db, t.ID, mainExtra, rating, hltbID, hltbURL); err != nil {
 				return fmt.Errorf("update hltb %s: %w", t.ID, err)
 			}
 		}
@@ -281,7 +288,7 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 	}
 	fmt.Printf("OpenCritic — ключей: %d, игр за этот запуск: %d\n", pool.Count(), len(ocTargets))
 	for i, t := range ocTargets {
-		score, found, err := scores.OpenCriticScore(ctx, client, pool, t.TitleEn)
+		score, found, pageURL, err := scores.OpenCriticScore(ctx, client, pool, t.TitleEn)
 		if errors.Is(err, scores.ErrAllKeysExhausted) {
 			fmt.Println("  все ключи OpenCritic исчерпали дневную квоту — остановка (добёрём в следующий запуск)")
 			break
@@ -294,7 +301,11 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 			if found {
 				oc = sql.NullInt64{Int64: int64(score), Valid: true}
 			}
-			if err := store.UpdateOpenCritic(db, t.ID, oc); err != nil {
+			var ocURL sql.NullString
+			if pageURL != "" {
+				ocURL = sql.NullString{String: pageURL, Valid: true}
+			}
+			if err := store.UpdateOpenCritic(db, t.ID, oc, ocURL); err != nil {
 				return fmt.Errorf("update oc %s: %w", t.ID, err)
 			}
 		}

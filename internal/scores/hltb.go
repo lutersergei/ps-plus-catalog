@@ -20,6 +20,8 @@ const (
 type HLTBResult struct {
 	MainExtraSeconds int // время Main + Sides (comp_plus), 0 если неизвестно
 	Rating           int // пользовательский рейтинг (review_score), 0 если неизвестно
+	GameID           int
+	PageURL          string
 }
 
 // HLTBSession держит honeypot-токен поиска и переиспользует его между запросами,
@@ -53,7 +55,11 @@ func (s *HLTBSession) Lookup(ctx context.Context, title string) (res HLTBResult,
 			sawResults = true
 		}
 		if g, ok := bestHLTB(data, title); ok {
-			return HLTBResult{MainExtraSeconds: g.CompPlus, Rating: g.ReviewScore}, true, true, nil
+			res := HLTBResult{MainExtraSeconds: g.CompPlus, Rating: g.ReviewScore, GameID: g.GameID}
+			if g.GameID > 0 {
+				res.PageURL = fmt.Sprintf("%s/game/%d", hltbBase, g.GameID)
+			}
+			return res, true, true, nil
 		}
 	}
 	return HLTBResult{}, false, sawResults, nil
@@ -106,6 +112,7 @@ func (s *HLTBSession) init(ctx context.Context) error {
 
 // hltbGame — игра в ответе HLTB.
 type hltbGame struct {
+	GameID      int    `json:"game_id"`
 	GameName    string `json:"game_name"`
 	CompPlus    int    `json:"comp_plus"`
 	ReviewScore int    `json:"review_score"`

@@ -98,16 +98,22 @@ func TitlesMatch(a, b string) bool {
 // сохраняет, напр., «director's cut» в названии страницы).
 var (
 	matchBrackets = regexp.MustCompile(`[\(\[][^\)\]]*[\)\]]`)
-	matchEdition  = regexp.MustCompile(`(?i)\b(standard|classic|enhanced|legendary|extended|complete|definitive|deluxe|ultimate|gold|premium|digital|next\s*gen|cross[- ]gen|elite|game of the year|goty|console|anniversary|jumbo|collector'?s|legacy)\b[^|]*?\b(edition|bundle|collection|version|set|upgrade|pass)\b`)
+	matchEdition  = regexp.MustCompile(`(?i)\b(standard|classic|enhanced|legendary|extended|complete|definitive|deluxe|ultimate|gold|premium|digital|next\s*gen|cross[- ]gen|elite|game of the year|goty|console|anniversary|jumbo|collector'?s)\b[^|]*?\b(edition|bundle|collection|version|set|upgrade|pass)\b`)
 	matchExtra    = regexp.MustCompile(`(?i)\b(free upgrade|expansion pass|cross[- ]gen|next gen|playstation plus|directors? cut|ea sports|remastered|reforged|ps4|ps5|playstation\s*[45]|ps\s*vr2?)\b`)
+	matchPrefix   = regexp.MustCompile(`(?i)^\s*marvels?\s+`)
 )
 
 func matchClean(s string) string {
 	s = strings.NewReplacer("’", "", "'", "", "®", " ", "™", " ", "|", " ", ":", " ", "-", " ", "–", " ", "—", " ", "&", " ", "+", " ").Replace(s)
 	s = diacritics.Replace(s)
+	s = strings.NewReplacer("FARCRY", "Far Cry", "Farcry", "Far Cry", "farcry", "far cry").Replace(s)
 	s = matchBrackets.ReplaceAllString(s, " ")
 	s = matchEdition.ReplaceAllString(s, " ")
 	s = matchExtra.ReplaceAllString(s, " ")
+	s = matchPrefix.ReplaceAllString(s, " ")
+	for i := 0; i < 3; i++ {
+		s = strings.TrimSpace(trailingWord.ReplaceAllString(s, ""))
+	}
 	return strings.Join(strings.Fields(s), " ")
 }
 

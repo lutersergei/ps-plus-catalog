@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 )
 
 // newTestDB открывает временную БД и наполняет её n играми (id g1..gN, active=1).
@@ -94,5 +95,137 @@ func TestDeactivateMissingAndCount(t *testing.T) {
 	}
 	if n, _ := CountActive(db); n != 3 {
 		t.Errorf("после деактивации активно %d, ждали 3", n)
+	}
+}
+
+func TestOpenCriticURLUsesSavedDirectGamePage(t *testing.T) {
+	g := GameView{
+		TitleEn:           "Assassin's Creed Origins",
+		OpenCriticPageURL: sql.NullString{String: "https://opencritic.com/game/4503/assassins-creed-origins", Valid: true},
+	}
+	want := "https://opencritic.com/game/4503/assassins-creed-origins"
+	if got := g.OpenCriticURL(); got != want {
+		t.Fatalf("OpenCriticURL=%q, ждали %q", got, want)
+	}
+}
+
+func TestGamesNeedingOpenCriticSkipsFreshScoredRowsWithoutURL(t *testing.T) {
+	db := newTestDB(t, 1)
+	if err := UpdateOpenCritic(db, "g1", sql.NullInt64{Int64: 85, Valid: true}, sql.NullString{}); err != nil {
+		t.Fatalf("update opencritic: %v", err)
+	}
+	targets, err := GamesNeedingOpenCritic(db, time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	if len(targets) != 0 {
+		t.Fatalf("ждали пустой список, получили %#v", targets)
+	}
+}
+
+func TestGamesNeedingOpenCriticBackfillsStaleScoredRowsWithoutURL(t *testing.T) {
+	db := newTestDB(t, 1)
+	if err := UpdateOpenCritic(db, "g1", sql.NullInt64{Int64: 85, Valid: true}, sql.NullString{}); err != nil {
+		t.Fatalf("update opencritic: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE games SET oc_checked_at = ? WHERE id = ?`, time.Now().AddDate(0, 0, -45), "g1"); err != nil {
+		t.Fatalf("age opencritic check: %v", err)
+	}
+	targets, err := GamesNeedingOpenCritic(db, time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	if len(targets) != 1 || targets[0].ID != "g1" {
+		t.Fatalf("ждали stale backfill g1, получили %#v", targets)
+	}
+}
+
+func TestGamesNeedingOpenCriticSkipsRowsWithFreshURL(t *testing.T) {
+	db := newTestDB(t, 1)
+	if err := UpdateOpenCritic(db, "g1", sql.NullInt64{Int64: 85, Valid: true}, sql.NullString{String: "https://opencritic.com/game/4503/assassins-creed-origins", Valid: true}); err != nil {
+		t.Fatalf("update opencritic: %v", err)
+	}
+	targets, err := GamesNeedingOpenCritic(db, time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	if len(targets) != 0 {
+		t.Fatalf("ждали пустой список, получили %#v", targets)
+	}
+}
+
+func TestGamesNeedingOpenCriticRefreshesStaleRowsWithURL(t *testing.T) {
+	db := newTestDB(t, 1)
+	if err := UpdateOpenCritic(db, "g1", sql.NullInt64{Int64: 85, Valid: true}, sql.NullString{String: "https://opencritic.com/game/4503/assassins-creed-origins", Valid: true}); err != nil {
+		t.Fatalf("update opencritic: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE games SET oc_checked_at = ? WHERE id = ?`, time.Now().AddDate(0, 0, -45), "g1"); err != nil {
+		t.Fatalf("age opencritic check: %v", err)
+	}
+	targets, err := GamesNeedingOpenCritic(db, time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	if len(targets) != 1 || targets[0].ID != "g1" {
+		t.Fatalf("ждали stale refresh g1, получили %#v", targets)
+	}
+}
+
+func TestHLTBURLUsesDirectGamePageWhenKnown(t *testing.T) {
+	g := GameView{
+		TitleEn:     "Assassin's Creed Origins",
+		HLTBPageURL: sql.NullString{String: "https://howlongtobeat.com/game/46402", Valid: true},
+	}
+	want := "https://howlongtobeat.com/game/46402"
+	if got := g.HLTBURL(); got != want {
+		t.Fatalf("HLTBURL=%q, ждали %q", got, want)
+	}
+}
+
+func TestGamesNeedingHLTBSkipsFreshScoredRowsWithoutURL(t *testing.T) {
+	db := newTestDB(t, 1)
+	if err := UpdateHLTB(db, "g1", sql.NullInt64{Int64: 189183, Valid: true}, sql.NullInt64{Int64: 79, Valid: true}, sql.NullInt64{}, sql.NullString{}); err != nil {
+		t.Fatalf("update hltb: %v", err)
+	}
+	targets, err := GamesNeedingHLTB(db, time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	if len(targets) != 0 {
+		t.Fatalf("ждали пустой список, получили %#v", targets)
+	}
+}
+
+func TestGamesNeedingHLTBBackfillsStaleScoredRowsWithoutURL(t *testing.T) {
+	db := newTestDB(t, 1)
+	if err := UpdateHLTB(db, "g1", sql.NullInt64{Int64: 189183, Valid: true}, sql.NullInt64{Int64: 79, Valid: true}, sql.NullInt64{}, sql.NullString{}); err != nil {
+		t.Fatalf("update hltb: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE games SET hltb_checked_at = ? WHERE id = ?`, time.Now().AddDate(0, 0, -45), "g1"); err != nil {
+		t.Fatalf("age hltb check: %v", err)
+	}
+	targets, err := GamesNeedingHLTB(db, time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	if len(targets) != 1 || targets[0].ID != "g1" {
+		t.Fatalf("ждали stale hltb backfill g1, получили %#v", targets)
+	}
+}
+
+func TestGamesNeedingHLTBRefreshesStaleRowsWithURL(t *testing.T) {
+	db := newTestDB(t, 1)
+	if err := UpdateHLTB(db, "g1", sql.NullInt64{Int64: 189183, Valid: true}, sql.NullInt64{Int64: 79, Valid: true}, sql.NullInt64{Int64: 46402, Valid: true}, sql.NullString{String: "https://howlongtobeat.com/game/46402", Valid: true}); err != nil {
+		t.Fatalf("update hltb: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE games SET hltb_checked_at = ? WHERE id = ?`, time.Now().AddDate(0, 0, -45), "g1"); err != nil {
+		t.Fatalf("age hltb check: %v", err)
+	}
+	targets, err := GamesNeedingHLTB(db, time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	if len(targets) != 1 || targets[0].ID != "g1" {
+		t.Fatalf("ждали stale hltb refresh g1, получили %#v", targets)
 	}
 }

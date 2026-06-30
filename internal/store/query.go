@@ -23,27 +23,29 @@ type ListParams struct {
 	Order         string   // "asc" | "desc"
 	Page          int      // с 1
 	PageSize      int
-	RuSubtitles   bool     // только игры с русскими субтитрами/интерфейсом
-	RuVoice       bool     // только игры с русской озвучкой
+	RuSubtitles   bool // только игры с русскими субтитрами/интерфейсом
+	RuVoice       bool // только игры с русской озвучкой
 }
 
 // GameView — игра для отображения.
 type GameView struct {
-	ID          string
-	Title       string
-	TitleEn     string
-	ReleaseYear int
-	Genres      []string
-	Platforms   string
-	ImageURL    string
-	StoreURL    string
-	Metacritic  sql.NullInt64
-	OpenCritic  sql.NullInt64
-	Average     sql.NullFloat64
-	HLTBMainSec sql.NullInt64 // Main + Sides, секунды
-	HLTBRating  sql.NullInt64 // рейтинг HLTB (0–100)
-	RuSub       bool          // есть русские субтитры/интерфейс
-	RuVoice     bool          // есть русская озвучка
+	ID                string
+	Title             string
+	TitleEn           string
+	ReleaseYear       int
+	Genres            []string
+	Platforms         string
+	ImageURL          string
+	StoreURL          string
+	Metacritic        sql.NullInt64
+	OpenCritic        sql.NullInt64
+	OpenCriticPageURL sql.NullString
+	Average           sql.NullFloat64
+	HLTBMainSec       sql.NullInt64 // Main + Sides, секунды
+	HLTBRating        sql.NullInt64 // рейтинг HLTB (0–100)
+	HLTBPageURL       sql.NullString
+	RuSub             bool // есть русские субтитры/интерфейс
+	RuVoice           bool // есть русская озвучка
 }
 
 // HLTBHours возвращает Main+Sides в часах (для шаблона), 0 если нет данных.
@@ -79,14 +81,20 @@ func (g GameView) MetacriticURL() string {
 	return "https://www.metacritic.com/search/" + url.PathEscape(g.searchTerm()) + "/"
 }
 
-// OpenCriticURL, HLTBURL — ссылки на поиск игры на ресурсе (прямую страницу без
-// числового id не построить). Работают всегда, в т.ч. когда оценка не собрана.
+// OpenCriticURL и HLTBURL ведут на прямую страницу, если при синке сохранён
+// канонический URL. Иначе остаётся search fallback.
 
 func (g GameView) OpenCriticURL() string {
+	if g.OpenCriticPageURL.Valid && strings.HasPrefix(g.OpenCriticPageURL.String, "https://opencritic.com/") {
+		return g.OpenCriticPageURL.String
+	}
 	return "https://opencritic.com/search?term=" + url.QueryEscape(g.searchTerm())
 }
 
 func (g GameView) HLTBURL() string {
+	if g.HLTBPageURL.Valid && strings.HasPrefix(g.HLTBPageURL.String, "https://howlongtobeat.com/") {
+		return g.HLTBPageURL.String
+	}
 	return "https://howlongtobeat.com/?q=" + url.QueryEscape(g.searchTerm())
 }
 
@@ -245,8 +253,8 @@ func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
 
 	query := `
 SELECT id, title, COALESCE(title_en,''), COALESCE(release_year,0), COALESCE(platforms,''), COALESCE(image_url,''),
-       COALESCE(store_url,''), metacritic_score, opencritic_score, average_score,
-       hltb_main_extra, hltb_rating, COALESCE(screen_langs,''), COALESCE(spoken_langs,'')
+       COALESCE(store_url,''), metacritic_score, opencritic_score, opencritic_url, average_score,
+       hltb_main_extra, hltb_rating, hltb_url, COALESCE(screen_langs,''), COALESCE(spoken_langs,'')
 FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
 	args = append(args, p.PageSize, (p.Page-1)*p.PageSize)
 
@@ -261,11 +269,11 @@ FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
 		var g GameView
 		var screenLangs, spokenLangs string
 		if err := rows.Scan(&g.ID, &g.Title, &g.TitleEn, &g.ReleaseYear, &g.Platforms, &g.ImageURL,
-			&g.StoreURL, &g.Metacritic, &g.OpenCritic, &g.Average,
-			&g.HLTBMainSec, &g.HLTBRating, &screenLangs, &spokenLangs); err != nil {
+			&g.StoreURL, &g.Metacritic, &g.OpenCritic, &g.OpenCriticPageURL, &g.Average,
+			&g.HLTBMainSec, &g.HLTBRating, &g.HLTBPageURL, &screenLangs, &spokenLangs); err != nil {
 			return res, err
 		}
-		g.RuSub   = strings.Contains(screenLangs, `"ru"`)
+		g.RuSub = strings.Contains(screenLangs, `"ru"`)
 		g.RuVoice = strings.Contains(spokenLangs, `"ru"`)
 		res.Games = append(res.Games, g)
 		ids = append(ids, g.ID)

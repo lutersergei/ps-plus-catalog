@@ -73,20 +73,21 @@ type ocSearchResult struct {
 // OpenCriticScore ищет игру по названию и возвращает её Top Critic Score.
 // found=false, если совпадений нет. Ключи берутся из пула (с ротацией при 429);
 // если все ключи исчерпаны — вернётся ErrAllKeysExhausted.
-func OpenCriticScore(ctx context.Context, c *http.Client, pool *KeyPool, title string) (score int, found bool, err error) {
+func OpenCriticScore(ctx context.Context, c *http.Client, pool *KeyPool, title string) (score int, found bool, pageURL string, err error) {
 	results, err := ocSearch(ctx, c, pool, CleanTitle(title))
 	if err != nil {
-		return 0, false, err
+		return 0, false, "", err
 	}
 	best, ok := bestMatch(title, results)
 	if !ok {
-		return 0, false, nil
+		return 0, false, "", nil
 	}
 	raw, err := ocGet(ctx, c, pool, fmt.Sprintf("/game/%d", best.ID))
 	if err != nil {
-		return 0, false, err
+		return 0, false, "", err
 	}
-	return parseOpenCriticGame(raw)
+	score, found, pageURL, err = parseOpenCriticGame(raw)
+	return score, found, pageURL, err
 }
 
 // ocMaxDist — максимальный search-distance OpenCritic, при котором ближайший
@@ -109,9 +110,13 @@ func bestMatch(title string, results []ocSearchResult) (ocSearchResult, bool) {
 		}
 	}
 	sort.Slice(results, func(i, j int) bool { return results[i].Dist < results[j].Dist })
-	best := results[0]
-	if best.Dist <= ocMaxDist && TitlesMatch(title, best.Name) {
-		return best, true
+	for _, r := range results {
+		if r.Dist > ocMaxDist {
+			break
+		}
+		if TitlesMatch(title, r.Name) {
+			return r, true
+		}
 	}
 	return ocSearchResult{}, false
 }
@@ -121,21 +126,22 @@ func bestMatch(title string, results []ocSearchResult) (ocSearchResult, bool) {
 // нуля. found=false, если оценки нет (поле отсутствует, null, NaN/Inf, вне
 // диапазона 0–100 или ≤0 — у непрорецензированных игр OpenCritic отдаёт 0/-1).
 // Иначе ноль попал бы в БД и занизил average_score.
-func parseOpenCriticGame(raw []byte) (score int, found bool, err error) {
+func parseOpenCriticGame(raw []byte) (score int, found bool, pageURL string, err error) {
 	var g struct {
 		TopCriticScore *float64 `json:"topCriticScore"`
+		URL            string   `json:"url"`
 	}
 	if err := json.Unmarshal(raw, &g); err != nil {
-		return 0, false, fmt.Errorf("parse opencritic game: %w", err)
+		return 0, false, "", fmt.Errorf("parse opencritic game: %w", err)
 	}
 	if g.TopCriticScore == nil {
-		return 0, false, nil
+		return 0, false, g.URL, nil
 	}
 	v := *g.TopCriticScore
 	if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 100 {
-		return 0, false, nil
+		return 0, false, g.URL, nil
 	}
-	return int(math.Round(v)), true, nil
+	return int(math.Round(v)), true, g.URL, nil
 }
 
 func ocSearch(ctx context.Context, c *http.Client, pool *KeyPool, title string) ([]ocSearchResult, error) {

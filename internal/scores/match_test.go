@@ -17,6 +17,10 @@ func TestTitlesMatch(t *testing.T) {
 		{"Gris", "Tetris", false},                                  // короткое чужое
 		{"It Takes Two", "Takes", false},                           // частичное пересечение
 		{"Spider-Man Remastered", "Spider-Man", true},              // ремастер ↔ база
+		{"Hogwarts Legacy PS5 Version", "Hogwarts Legacy", true},   // платформа + висящий хвост
+		{"Terraria – PlayStation®4 Edition", "Terraria", true},     // PlayStation edition ↔ база
+		{"FARCRY 3 Classic Edition", "Far Cry 3 Classic Edition", true},
+		{"Marvel's Guardians of the Galaxy PS4 & PS5", "Guardians of the Galaxy", true},
 		{"Celeste", "Celeste", true},
 	}
 	for _, c := range cases {

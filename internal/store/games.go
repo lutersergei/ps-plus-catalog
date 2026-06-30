@@ -112,12 +112,54 @@ func GamesNeedingMetacritic(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, e
 
 // GamesNeedingOpenCritic — игры без свежей проверки OpenCritic.
 func GamesNeedingOpenCritic(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, error) {
-	return gamesNeeding(db, "oc_checked_at", staleBefore)
+	rows, err := db.Query(`
+SELECT id, title, COALESCE(title_en, title)
+FROM games
+WHERE active = 1
+  AND (
+    oc_checked_at IS NULL
+    OR oc_checked_at < ?
+  )
+ORDER BY title`, staleBefore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ScoreTarget
+	for rows.Next() {
+		var t ScoreTarget
+		if err := rows.Scan(&t.ID, &t.Title, &t.TitleEn); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 // GamesNeedingHLTB — игры без свежей проверки HowLongToBeat.
 func GamesNeedingHLTB(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, error) {
-	return gamesNeeding(db, "hltb_checked_at", staleBefore)
+	rows, err := db.Query(`
+SELECT id, title, COALESCE(title_en, title)
+FROM games
+WHERE active = 1
+  AND (
+    hltb_checked_at IS NULL
+    OR hltb_checked_at < ?
+  )
+ORDER BY title`, staleBefore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ScoreTarget
+	for rows.Next() {
+		var t ScoreTarget
+		if err := rows.Scan(&t.ID, &t.Title, &t.TitleEn); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 // LangTarget — игра, которой нужны данные о языках.
@@ -168,10 +210,10 @@ func UpdateLangs(db *sql.DB, id string, spoken, screen []string) error {
 
 // UpdateHLTB записывает время Main+Sides (сек) и рейтинг HLTB (0–100), помечает
 // время проверки. Невалидные значения (Valid=false) означают «нет данных».
-func UpdateHLTB(db *sql.DB, id string, mainExtra, rating sql.NullInt64) error {
+func UpdateHLTB(db *sql.DB, id string, mainExtra, rating, hltbID sql.NullInt64, hltbURL sql.NullString) error {
 	if _, err := db.Exec(`
-UPDATE games SET hltb_main_extra = ?, hltb_rating = ?, hltb_checked_at = CURRENT_TIMESTAMP
-WHERE id = ?`, mainExtra, rating, id); err != nil {
+UPDATE games SET hltb_main_extra = ?, hltb_rating = ?, hltb_id = ?, hltb_url = ?, hltb_checked_at = CURRENT_TIMESTAMP
+WHERE id = ?`, mainExtra, rating, hltbID, hltbURL, id); err != nil {
 		return err
 	}
 	return recomputeAverage(db, id)
@@ -188,8 +230,8 @@ func UpdateMetacritic(db *sql.DB, id string, mc sql.NullInt64) error {
 }
 
 // UpdateOpenCritic — то же для OpenCritic.
-func UpdateOpenCritic(db *sql.DB, id string, oc sql.NullInt64) error {
-	if _, err := db.Exec(`UPDATE games SET opencritic_score = ?, oc_checked_at = CURRENT_TIMESTAMP WHERE id = ?`, oc, id); err != nil {
+func UpdateOpenCritic(db *sql.DB, id string, oc sql.NullInt64, ocURL sql.NullString) error {
+	if _, err := db.Exec(`UPDATE games SET opencritic_score = ?, opencritic_url = ?, oc_checked_at = CURRENT_TIMESTAMP WHERE id = ?`, oc, ocURL, id); err != nil {
 		return err
 	}
 	return recomputeAverage(db, id)
