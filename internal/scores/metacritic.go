@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"math"
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 const mcUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
@@ -20,6 +22,8 @@ var ldJSONRe = regexp.MustCompile(`(?s)<script type="application/ld\+json">(.*?)
 // «Metascore N out of 100»). Нужна, т.к. на части страниц Metacritic
 // JSON-LD не содержит aggregateRating, хотя оценка на странице есть.
 var metascoreRe = regexp.MustCompile(`Metascore (\d{1,3}) out of 100`)
+var mcUserStatsURLRe = regexp.MustCompile(`https://backend\.metacritic\.com/reviews/metacritic/user/games/[^"'<>\\]+/stats/web\?[^"'<>\\]+`)
+var mcUserAnyURLRe = regexp.MustCompile(`https://backend\.metacritic\.com/reviews/metacritic/user/games/([^/"'<>\\]+)/`)
 
 // Rating — оценка источника в шкале 0-100 и опциональное число голосов/рецензий.
 type Rating struct {
@@ -82,7 +86,8 @@ func MetacriticScores(ctx context.Context, c *http.Client, titleEn string) (Meta
 	if found {
 		res.Critic = Rating{Score: score, Found: true}
 	}
-	user, err := metacriticUserScore(ctx, c, slug)
+	userURL := metacriticUserStatsURL(body, slug)
+	user, err := metacriticUserScore(ctx, c, userURL, slug)
 	if err != nil {
 		res.UserErr = err
 	} else {
@@ -123,8 +128,22 @@ func parseMetacritic(html []byte) (int, bool, error) {
 	return 0, false, nil
 }
 
-func metacriticUserScore(ctx context.Context, c *http.Client, slug string) (Rating, error) {
-	url := "https://backend.metacritic.com/reviews/metacritic/user/games/" + slug + "/stats/web?componentName=user-score-summary&componentDisplayName=User+Score+Summary&componentType=MetaScoreSummary"
+func metacriticUserStatsURL(pageHTML []byte, fallbackSlug string) string {
+	page := html.UnescapeString(string(pageHTML))
+	if m := mcUserStatsURLRe.FindString(page); m != "" {
+		return strings.ReplaceAll(m, `\u0026`, "&")
+	}
+	if m := mcUserAnyURLRe.FindStringSubmatch(page); m != nil {
+		return buildMetacriticUserStatsURL(m[1])
+	}
+	return buildMetacriticUserStatsURL(fallbackSlug)
+}
+
+func buildMetacriticUserStatsURL(slug string) string {
+	return "https://backend.metacritic.com/reviews/metacritic/user/games/" + slug + "/stats/web?componentName=user-score-summary&componentDisplayName=User+Score+Summary&componentType=MetaScoreSummary"
+}
+
+func metacriticUserScore(ctx context.Context, c *http.Client, url, pageSlug string) (Rating, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return Rating{}, err
@@ -133,7 +152,7 @@ func metacriticUserScore(ctx context.Context, c *http.Client, slug string) (Rati
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 	req.Header.Set("Origin", "https://www.metacritic.com")
-	req.Header.Set("Referer", "https://www.metacritic.com/game/"+slug+"/")
+	req.Header.Set("Referer", "https://www.metacritic.com/game/"+pageSlug+"/")
 	resp, err := c.Do(req)
 	if err != nil {
 		return Rating{}, fmt.Errorf("metacritic user fetch: %w", err)

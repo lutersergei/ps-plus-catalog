@@ -43,3 +43,16 @@ func TestParseMetacriticUserStatsTreatsMissingScoreAsNoData(t *testing.T) {
 		t.Fatal("found=true, ждали false")
 	}
 }
+
+func TestMetacriticUserStatsURLUsesCanonicalSlugFromPage(t *testing.T) {
+	html := []byte(`
+		<script>
+		"https://backend.metacritic.com/reviews/metacritic/user/games/bound-2016/stats/web?componentName=user-score-summary&componentDisplayName=User+Score+Summary&componentType=MetaScoreSummary"
+		</script>
+	`)
+	got := metacriticUserStatsURL(html, "bound")
+	want := "https://backend.metacritic.com/reviews/metacritic/user/games/bound-2016/stats/web?componentName=user-score-summary&componentDisplayName=User+Score+Summary&componentType=MetaScoreSummary"
+	if got != want {
+		t.Fatalf("url=%q, ждали %q", got, want)
+	}
+}
