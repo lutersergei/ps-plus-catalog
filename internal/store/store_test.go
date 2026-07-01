@@ -171,6 +171,58 @@ func TestGamesNeedingOpenCriticRefreshesStaleRowsWithURL(t *testing.T) {
 	}
 }
 
+func TestUpdateStoresUserScoresWithoutChangingAverageFormula(t *testing.T) {
+	db := newTestDB(t, 1)
+	if err := UpdateMetacriticScores(
+		db,
+		"g1",
+		sql.NullInt64{Int64: 80, Valid: true},
+		sql.NullInt64{Int64: 65, Valid: true},
+		sql.NullInt64{Int64: 120, Valid: true},
+	); err != nil {
+		t.Fatalf("update metacritic: %v", err)
+	}
+	if err := UpdateOpenCriticScores(
+		db,
+		"g1",
+		sql.NullInt64{Int64: 90, Valid: true},
+		sql.NullString{String: "https://opencritic.com/game/1660/assassins-creed-syndicate", Valid: true},
+		sql.NullInt64{Int64: 1660, Valid: true},
+		sql.NullInt64{Int64: 70, Valid: true},
+		sql.NullInt64{Int64: 57, Valid: true},
+	); err != nil {
+		t.Fatalf("update opencritic: %v", err)
+	}
+
+	var mcUser, mcUserCount, ocID, ocPlayer, ocPlayerCount sql.NullInt64
+	var avg sql.NullFloat64
+	if err := db.QueryRow(`
+SELECT metacritic_user_score, metacritic_user_count,
+       opencritic_id, opencritic_player_score, opencritic_player_count,
+       average_score
+FROM games WHERE id = ?`, "g1").Scan(&mcUser, &mcUserCount, &ocID, &ocPlayer, &ocPlayerCount, &avg); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if !mcUser.Valid || mcUser.Int64 != 65 {
+		t.Fatalf("metacritic_user_score=%v, ждали 65", mcUser)
+	}
+	if !mcUserCount.Valid || mcUserCount.Int64 != 120 {
+		t.Fatalf("metacritic_user_count=%v, ждали 120", mcUserCount)
+	}
+	if !ocID.Valid || ocID.Int64 != 1660 {
+		t.Fatalf("opencritic_id=%v, ждали 1660", ocID)
+	}
+	if !ocPlayer.Valid || ocPlayer.Int64 != 70 {
+		t.Fatalf("opencritic_player_score=%v, ждали 70", ocPlayer)
+	}
+	if !ocPlayerCount.Valid || ocPlayerCount.Int64 != 57 {
+		t.Fatalf("opencritic_player_count=%v, ждали 57", ocPlayerCount)
+	}
+	if !avg.Valid || avg.Float64 != 85 {
+		t.Fatalf("average_score=%v, ждали 85 по critic-only формуле", avg)
+	}
+}
+
 func TestHLTBURLUsesDirectGamePageWhenKnown(t *testing.T) {
 	g := GameView{
 		TitleEn:     "Assassin's Creed Origins",

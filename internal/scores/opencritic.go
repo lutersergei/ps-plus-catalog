@@ -74,20 +74,55 @@ type ocSearchResult struct {
 // found=false, если совпадений нет. Ключи берутся из пула (с ротацией при 429);
 // если все ключи исчерпаны — вернётся ErrAllKeysExhausted.
 func OpenCriticScore(ctx context.Context, c *http.Client, pool *KeyPool, title string) (score int, found bool, pageURL string, err error) {
-	results, err := ocSearch(ctx, c, pool, CleanTitle(title))
+	res, err := OpenCriticScores(ctx, c, pool, "", title)
 	if err != nil {
 		return 0, false, "", err
+	}
+	return res.Critic.Score, res.Critic.Found, res.PageURL, nil
+}
+
+// OpenCriticResult содержит critic score, canonical URL, OpenCritic id и
+// опциональный Player Rating. PlayerErr не фатален для critic score.
+type OpenCriticResult struct {
+	ID        int
+	Critic    Rating
+	Player    Rating
+	PageURL   string
+	PlayerErr error
+}
+
+// OpenCriticScores ищет игру и возвращает critic score плюс player rating, если
+// задан bearer-токен публичного API сайта.
+func OpenCriticScores(ctx context.Context, c *http.Client, pool *KeyPool, siteKey, title string) (OpenCriticResult, error) {
+	results, err := ocSearch(ctx, c, pool, CleanTitle(title))
+	if err != nil {
+		return OpenCriticResult{}, err
 	}
 	best, ok := bestMatch(title, results)
 	if !ok {
-		return 0, false, "", nil
+		return OpenCriticResult{}, nil
 	}
 	raw, err := ocGet(ctx, c, pool, fmt.Sprintf("/game/%d", best.ID))
 	if err != nil {
-		return 0, false, "", err
+		return OpenCriticResult{}, err
 	}
-	score, found, pageURL, err = parseOpenCriticGame(raw)
-	return score, found, pageURL, err
+	score, found, pageURL, err := parseOpenCriticGame(raw)
+	if err != nil {
+		return OpenCriticResult{}, err
+	}
+	res := OpenCriticResult{ID: best.ID, PageURL: pageURL}
+	if found {
+		res.Critic = Rating{Score: score, Found: true}
+	}
+	if siteKey != "" {
+		player, err := openCriticPlayerRating(ctx, c, siteKey, best.ID)
+		if err != nil {
+			res.PlayerErr = err
+		} else {
+			res.Player = player
+		}
+	}
+	return res, nil
 }
 
 // ocMaxDist — максимальный search-distance OpenCritic, при котором ближайший
@@ -142,6 +177,56 @@ func parseOpenCriticGame(raw []byte) (score int, found bool, pageURL string, err
 		return 0, false, g.URL, nil
 	}
 	return int(math.Round(v)), true, g.URL, nil
+}
+
+func openCriticPlayerRating(ctx context.Context, c *http.Client, siteKey string, gameID int) (Rating, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("https://api.opencritic.com/api/ratings/game/%d", gameID), nil)
+	if err != nil {
+		return Rating{}, err
+	}
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Authorization", "Bearer "+siteKey)
+	req.Header.Set("Origin", "https://opencritic.com")
+	req.Header.Set("Referer", fmt.Sprintf("https://opencritic.com/game/%d/", gameID))
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36")
+	resp, err := c.Do(req)
+	if err != nil {
+		return Rating{}, fmt.Errorf("opencritic player rating fetch: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return Rating{}, nil
+	}
+	body, readErr := readLimited(resp.Body, maxJSONBytes)
+	if readErr != nil {
+		return Rating{}, readErr
+	}
+	if resp.StatusCode != http.StatusOK {
+		return Rating{}, fmt.Errorf("opencritic player rating status %d: %s", resp.StatusCode, string(body))
+	}
+	score, count, found, err := parseOpenCriticPlayerRating(body)
+	if err != nil {
+		return Rating{}, err
+	}
+	return Rating{Score: score, Count: count, Found: found}, nil
+}
+
+func parseOpenCriticPlayerRating(raw []byte) (score int, count int, found bool, err error) {
+	var r struct {
+		Median *float64 `json:"median"`
+		Count  int      `json:"count"`
+	}
+	if err := json.Unmarshal(raw, &r); err != nil {
+		return 0, 0, false, fmt.Errorf("parse opencritic player rating: %w", err)
+	}
+	if r.Median == nil {
+		return 0, 0, false, nil
+	}
+	v := *r.Median
+	if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 || v > 100 {
+		return 0, 0, false, nil
+	}
+	return int(math.Round(v)), r.Count, true, nil
 }
 
 func ocSearch(ctx context.Context, c *http.Client, pool *KeyPool, title string) ([]ocSearchResult, error) {

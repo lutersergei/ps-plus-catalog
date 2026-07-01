@@ -249,17 +249,26 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 	}
 	fmt.Printf("Metacritic — игр к проверке: %d\n", len(mcTargets))
 	for i, t := range mcTargets {
-		score, found, err := scores.MetacriticScore(ctx, client, t.TitleEn)
+		res, err := scores.MetacriticScores(ctx, client, t.TitleEn)
 		if err != nil {
 			// сетевой сбой/блок/5xx — НЕ помечаем проверенным, повторим в следующий запуск
 			log.Printf("[mc] %s: %v (повторим позже)", t.Title, err)
 		} else {
 			// успех: либо нашли оценку, либо достоверно «нет» (found=false → NULL)
 			var mc sql.NullInt64
-			if found {
-				mc = sql.NullInt64{Int64: int64(score), Valid: true}
+			if res.Critic.Found {
+				mc = sql.NullInt64{Int64: int64(res.Critic.Score), Valid: true}
 			}
-			if err := store.UpdateMetacritic(db, t.ID, mc); err != nil {
+			var userScore sql.NullInt64
+			var userCount sql.NullInt64
+			if res.User.Found {
+				userScore = sql.NullInt64{Int64: int64(res.User.Score), Valid: true}
+				userCount = sql.NullInt64{Int64: int64(res.User.Count), Valid: true}
+			}
+			if res.UserErr != nil {
+				log.Printf("[mc-user] %s: %v", t.Title, res.UserErr)
+			}
+			if err := store.UpdateMetacriticScores(db, t.ID, mc, userScore, userCount); err != nil {
 				return fmt.Errorf("update mc %s: %w", t.ID, err)
 			}
 		}
@@ -286,9 +295,10 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 	if effMax > 0 && len(ocTargets) > effMax {
 		ocTargets = ocTargets[:effMax]
 	}
+	siteKey := openCriticSiteKey()
 	fmt.Printf("OpenCritic — ключей: %d, игр за этот запуск: %d\n", pool.Count(), len(ocTargets))
 	for i, t := range ocTargets {
-		score, found, pageURL, err := scores.OpenCriticScore(ctx, client, pool, t.TitleEn)
+		res, err := scores.OpenCriticScores(ctx, client, pool, siteKey, t.TitleEn)
 		if errors.Is(err, scores.ErrAllKeysExhausted) {
 			fmt.Println("  все ключи OpenCritic исчерпали дневную квоту — остановка (добёрём в следующий запуск)")
 			break
@@ -298,14 +308,27 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 			log.Printf("[oc] %s: %v (повторим позже)", t.Title, err)
 		} else {
 			var oc sql.NullInt64
-			if found {
-				oc = sql.NullInt64{Int64: int64(score), Valid: true}
+			if res.Critic.Found {
+				oc = sql.NullInt64{Int64: int64(res.Critic.Score), Valid: true}
 			}
 			var ocURL sql.NullString
-			if pageURL != "" {
-				ocURL = sql.NullString{String: pageURL, Valid: true}
+			if res.PageURL != "" {
+				ocURL = sql.NullString{String: res.PageURL, Valid: true}
 			}
-			if err := store.UpdateOpenCritic(db, t.ID, oc, ocURL); err != nil {
+			var ocID sql.NullInt64
+			if res.ID > 0 {
+				ocID = sql.NullInt64{Int64: int64(res.ID), Valid: true}
+			}
+			var playerScore sql.NullInt64
+			var playerCount sql.NullInt64
+			if res.Player.Found {
+				playerScore = sql.NullInt64{Int64: int64(res.Player.Score), Valid: true}
+				playerCount = sql.NullInt64{Int64: int64(res.Player.Count), Valid: true}
+			}
+			if res.PlayerErr != nil {
+				log.Printf("[oc-player] %s: %v", t.Title, res.PlayerErr)
+			}
+			if err := store.UpdateOpenCriticScores(db, t.ID, oc, ocURL, ocID, playerScore, playerCount); err != nil {
 				return fmt.Errorf("update oc %s: %w", t.ID, err)
 			}
 		}
@@ -336,4 +359,8 @@ func openCriticKeys() []string {
 	}
 	add(os.Getenv("OPENCRITIC_API_KEY"))
 	return keys
+}
+
+func openCriticSiteKey() string {
+	return strings.TrimSpace(os.Getenv("OPENCRITIC_SITE_API_KEY"))
 }

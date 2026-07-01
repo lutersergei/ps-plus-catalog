@@ -219,19 +219,37 @@ WHERE id = ?`, mainExtra, rating, hltbID, hltbURL, id); err != nil {
 	return recomputeAverage(db, id)
 }
 
-// UpdateMetacritic записывает оценку Metacritic (или NULL, если не найдена),
-// помечает время проверки и пересчитывает среднее. mc.Valid=false означает,
-// что проверка была, но оценки нет.
+// UpdateMetacritic записывает только critic score Metacritic и оставляет user
+// score пустым. Сохранён для старых вызовов и тестов.
 func UpdateMetacritic(db *sql.DB, id string, mc sql.NullInt64) error {
-	if _, err := db.Exec(`UPDATE games SET metacritic_score = ?, mc_checked_at = CURRENT_TIMESTAMP WHERE id = ?`, mc, id); err != nil {
+	return UpdateMetacriticScores(db, id, mc, sql.NullInt64{}, sql.NullInt64{})
+}
+
+// UpdateMetacriticScores записывает Metacritic critic score и user score.
+// userCount.Valid=false означает, что число пользовательских оценок неизвестно.
+func UpdateMetacriticScores(db *sql.DB, id string, mc, userScore, userCount sql.NullInt64) error {
+	if _, err := db.Exec(`
+UPDATE games SET metacritic_score = ?, metacritic_user_score = ?, metacritic_user_count = ?, mc_checked_at = CURRENT_TIMESTAMP
+WHERE id = ?`, mc, userScore, userCount, id); err != nil {
 		return err
 	}
 	return recomputeAverage(db, id)
 }
 
-// UpdateOpenCritic — то же для OpenCritic.
+// UpdateOpenCritic записывает только critic score и URL OpenCritic. Сохранён
+// для старых вызовов и тестов.
 func UpdateOpenCritic(db *sql.DB, id string, oc sql.NullInt64, ocURL sql.NullString) error {
-	if _, err := db.Exec(`UPDATE games SET opencritic_score = ?, opencritic_url = ?, oc_checked_at = CURRENT_TIMESTAMP WHERE id = ?`, oc, ocURL, id); err != nil {
+	return UpdateOpenCriticScores(db, id, oc, ocURL, sql.NullInt64{}, sql.NullInt64{}, sql.NullInt64{})
+}
+
+// UpdateOpenCriticScores записывает OpenCritic critic score, canonical URL,
+// OpenCritic id и Player Rating.
+func UpdateOpenCriticScores(db *sql.DB, id string, oc sql.NullInt64, ocURL sql.NullString, ocID, playerScore, playerCount sql.NullInt64) error {
+	if _, err := db.Exec(`
+UPDATE games SET opencritic_score = ?, opencritic_url = ?, opencritic_id = ?,
+                 opencritic_player_score = ?, opencritic_player_count = ?,
+                 oc_checked_at = CURRENT_TIMESTAMP
+WHERE id = ?`, oc, ocURL, ocID, playerScore, playerCount, id); err != nil {
 		return err
 	}
 	return recomputeAverage(db, id)
