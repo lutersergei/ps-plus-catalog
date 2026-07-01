@@ -131,6 +131,10 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 		YearTo:        atoiDefault(q.Get("year_to"), 0),
 		AvgFrom:       atofDefault(q.Get("avg_from"), 0),
 		AvgTo:         atofDefault(q.Get("avg_to"), 0),
+		CriticFrom:    atofDefault(q.Get("critic_from"), 0),
+		CriticTo:      atofDefault(q.Get("critic_to"), 0),
+		PlayerFrom:    atofDefault(q.Get("player_from"), 0),
+		PlayerTo:      atofDefault(q.Get("player_to"), 0),
 		HLTBFromHours: atofDefault(q.Get("hltb_from"), 0),
 		HLTBToHours:   atofDefault(q.Get("hltb_to"), 0),
 		Sort:          orDefault(q.Get("sort"), "title"),
@@ -185,6 +189,18 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 	}
 	if p.AvgTo > 0 {
 		base.Set("avg_to", strconv.FormatFloat(p.AvgTo, 'f', -1, 64))
+	}
+	if p.CriticFrom > 0 {
+		base.Set("critic_from", strconv.FormatFloat(p.CriticFrom, 'f', -1, 64))
+	}
+	if p.CriticTo > 0 {
+		base.Set("critic_to", strconv.FormatFloat(p.CriticTo, 'f', -1, 64))
+	}
+	if p.PlayerFrom > 0 {
+		base.Set("player_from", strconv.FormatFloat(p.PlayerFrom, 'f', -1, 64))
+	}
+	if p.PlayerTo > 0 {
+		base.Set("player_to", strconv.FormatFloat(p.PlayerTo, 'f', -1, 64))
 	}
 	if p.HLTBFromHours > 0 {
 		base.Set("hltb_from", strconv.FormatFloat(p.HLTBFromHours, 'f', -1, 64))
