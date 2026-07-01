@@ -57,6 +57,9 @@ func TestNormalizeParams(t *testing.T) {
 		Search:   string(make([]byte, maxSearchLen+50)),
 		Genres:   make([]string, maxGenres+10),
 		YearFrom: 2020, YearTo: 2000, // перевёрнутый диапазон
+		AvgFrom: 90, AvgTo: 50,
+		CriticFrom: 90, CriticTo: 50,
+		PlayerFrom: 90, PlayerTo: 50,
 	}
 	NormalizeParams(&p)
 	if p.Page != 1 {
@@ -70,6 +73,15 @@ func TestNormalizeParams(t *testing.T) {
 	}
 	if p.YearFrom != 0 || p.YearTo != 0 {
 		t.Errorf("перевёрнутый диапазон годов должен обнулиться, получили %d..%d", p.YearFrom, p.YearTo)
+	}
+	if p.AvgFrom != 0 || p.AvgTo != 0 {
+		t.Errorf("перевёрнутый диапазон средней оценки должен обнулиться, получили %.1f..%.1f", p.AvgFrom, p.AvgTo)
+	}
+	if p.CriticFrom != 0 || p.CriticTo != 0 {
+		t.Errorf("перевёрнутый диапазон критиков должен обнулиться, получили %.1f..%.1f", p.CriticFrom, p.CriticTo)
+	}
+	if p.PlayerFrom != 0 || p.PlayerTo != 0 {
+		t.Errorf("перевёрнутый диапазон игроков должен обнулиться, получили %.1f..%.1f", p.PlayerFrom, p.PlayerTo)
 	}
 }
 
@@ -292,6 +304,106 @@ FROM games WHERE id = ?`, "g1").Scan(&avg, &criticAvg, &playerAvg); err != nil {
 	}
 }
 
+func TestListGamesFiltersByCriticAndPlayerAverages(t *testing.T) {
+	db := newTestDB(t, 3)
+	mustExec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := db.Exec(query, args...); err != nil {
+			t.Fatalf("exec %q: %v", query, err)
+		}
+	}
+	mustExec(`UPDATE games SET critic_average_score = 90, player_average_score = 70 WHERE id = 'g1'`)
+	mustExec(`UPDATE games SET critic_average_score = 60, player_average_score = 95 WHERE id = 'g2'`)
+	mustExec(`UPDATE games SET critic_average_score = 82, player_average_score = 85 WHERE id = 'g3'`)
+
+	res, err := ListGames(db, ListParams{CriticFrom: 80, PlayerFrom: 80, Page: 1, PageSize: 24})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(res.Games) != 1 || res.Games[0].ID != "g3" {
+		t.Fatalf("ждали только g3, получили %#v", res.Games)
+	}
+}
+
+func TestListGamesSortsByCriticAndPlayerAverages(t *testing.T) {
+	db := newTestDB(t, 4)
+	mustExec := func(query string, args ...any) {
+		t.Helper()
+		if _, err := db.Exec(query, args...); err != nil {
+			t.Fatalf("exec %q: %v", query, err)
+		}
+	}
+	mustExec(`UPDATE games SET critic_average_score = 90, player_average_score = 70 WHERE id = 'g1'`)
+	mustExec(`UPDATE games SET critic_average_score = 60, player_average_score = 95 WHERE id = 'g2'`)
+	mustExec(`UPDATE games SET critic_average_score = 82, player_average_score = 85 WHERE id = 'g3'`)
+	mustExec(`UPDATE games SET critic_average_score = NULL, player_average_score = NULL WHERE id = 'g4'`)
+
+	criticRes, err := ListGames(db, ListParams{Sort: "critic", Order: "desc", Page: 1, PageSize: 24})
+	if err != nil {
+		t.Fatalf("list critic: %v", err)
+	}
+	gotCritic := []string{criticRes.Games[0].ID, criticRes.Games[1].ID, criticRes.Games[2].ID, criticRes.Games[3].ID}
+	wantCritic := []string{"g1", "g3", "g2", "g4"}
+	if !equalStrings(gotCritic, wantCritic) {
+		t.Fatalf("critic order=%v, ждали %v", gotCritic, wantCritic)
+	}
+
+	playerRes, err := ListGames(db, ListParams{Sort: "player", Order: "desc", Page: 1, PageSize: 24})
+	if err != nil {
+		t.Fatalf("list player: %v", err)
+	}
+	gotPlayer := []string{playerRes.Games[0].ID, playerRes.Games[1].ID, playerRes.Games[2].ID, playerRes.Games[3].ID}
+	wantPlayer := []string{"g2", "g3", "g1", "g4"}
+	if !equalStrings(gotPlayer, wantPlayer) {
+		t.Fatalf("player order=%v, ждали %v", gotPlayer, wantPlayer)
+	}
+}
+
+func TestListGamesLoadsUserScoreFieldsAndAverages(t *testing.T) {
+	db := newTestDB(t, 1)
+	if _, err := db.Exec(`
+UPDATE games
+SET metacritic_score = 80,
+    metacritic_user_score = 65,
+    metacritic_user_count = 120,
+    opencritic_score = 90,
+    opencritic_player_score = 70,
+    opencritic_player_count = 57,
+    average_score = 76,
+    critic_average_score = 85,
+    player_average_score = 67.5
+WHERE id = 'g1'`); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	res, err := ListGames(db, ListParams{Page: 1, PageSize: 24})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(res.Games) != 1 {
+		t.Fatalf("games=%d, ждали 1", len(res.Games))
+	}
+	g := res.Games[0]
+	if !g.MetacriticUser.Valid || g.MetacriticUser.Int64 != 65 {
+		t.Fatalf("MetacriticUser=%v, ждали 65", g.MetacriticUser)
+	}
+	if !g.MetacriticUserCount.Valid || g.MetacriticUserCount.Int64 != 120 {
+		t.Fatalf("MetacriticUserCount=%v, ждали 120", g.MetacriticUserCount)
+	}
+	if !g.OpenCriticPlayer.Valid || g.OpenCriticPlayer.Int64 != 70 {
+		t.Fatalf("OpenCriticPlayer=%v, ждали 70", g.OpenCriticPlayer)
+	}
+	if !g.OpenCriticPlayerCount.Valid || g.OpenCriticPlayerCount.Int64 != 57 {
+		t.Fatalf("OpenCriticPlayerCount=%v, ждали 57", g.OpenCriticPlayerCount)
+	}
+	if !g.CriticAverage.Valid || g.CriticAverage.Float64 != 85 {
+		t.Fatalf("CriticAverage=%v, ждали 85", g.CriticAverage)
+	}
+	if !g.PlayerAverage.Valid || g.PlayerAverage.Float64 != 67.5 {
+		t.Fatalf("PlayerAverage=%v, ждали 67.5", g.PlayerAverage)
+	}
+}
+
 func TestHLTBURLUsesDirectGamePageWhenKnown(t *testing.T) {
 	g := GameView{
 		TitleEn:     "Assassin's Creed Origins",
@@ -349,4 +461,16 @@ func TestGamesNeedingHLTBRefreshesStaleRowsWithURL(t *testing.T) {
 	if len(targets) != 1 || targets[0].ID != "g1" {
 		t.Fatalf("ждали stale hltb refresh g1, получили %#v", targets)
 	}
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
