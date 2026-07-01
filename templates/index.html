@@ -47,6 +47,15 @@
   .score.na .v { color:#54607c; }
   a.score { display:block; text-decoration:none; color:inherit; transition:background .15s, box-shadow .15s; }
   a.score:hover { background:#243150; box-shadow:0 0 0 1px var(--accent) inset; }
+  .score-details { display:flex; flex-direction:column; gap:5px; border-radius:8px; padding:8px; background:#0f1626; }
+  .score-line { display:grid; grid-template-columns:82px 1fr auto; gap:8px; align-items:center; }
+  a.score-line { color:inherit; text-decoration:none; }
+  a.score-line:hover .name { color:var(--text); }
+  .score-line .name { color:var(--muted); font-size:10px; text-transform:uppercase; }
+  .score-line .bar { height:7px; border-radius:999px; background:#25314c; overflow:hidden; }
+  .score-line .bar span { display:block; height:100%; border-radius:999px; background:var(--accent); }
+  .score-line .num { min-width:18px; text-align:right; font-size:12px; font-weight:700; }
+  .score-counts { color:var(--muted); font-size:10px; }
   .pager { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; padding:8px 24px 40px; }
   .pager a, .pager span { padding:7px 11px; border-radius:8px; background:var(--card); color:var(--text); text-decoration:none; border:1px solid #2c3654; font-size:14px; }
   .pager .cur { background:var(--accent); border-color:var(--accent); }
@@ -119,6 +128,28 @@
   </div>
 
   <div class="field">
+    <label>Оценки критиков от / до</label>
+    <div class="field-row">
+      <input type="number" name="critic_from" min="0" max="100" step="1" placeholder="0"
+        {{if gt .Params.CriticFrom 0.0}}value="{{printf "%.0f" .Params.CriticFrom}}"{{end}}>
+      <span>–</span>
+      <input type="number" name="critic_to" min="0" max="100" step="1" placeholder="100"
+        {{if gt .Params.CriticTo 0.0}}value="{{printf "%.0f" .Params.CriticTo}}"{{end}}>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Оценки игроков от / до</label>
+    <div class="field-row">
+      <input type="number" name="player_from" min="0" max="100" step="1" placeholder="0"
+        {{if gt .Params.PlayerFrom 0.0}}value="{{printf "%.0f" .Params.PlayerFrom}}"{{end}}>
+      <span>–</span>
+      <input type="number" name="player_to" min="0" max="100" step="1" placeholder="100"
+        {{if gt .Params.PlayerTo 0.0}}value="{{printf "%.0f" .Params.PlayerTo}}"{{end}}>
+    </div>
+  </div>
+
+  <div class="field">
     <label>Main+Sides (ч) от / до</label>
     <div class="field-row">
       <input type="number" name="hltb_from" min="0" step="1" placeholder="0"
@@ -136,6 +167,8 @@
       <option value="title"    {{if eq $s "title"}}selected{{end}}>По названию</option>
       <option value="year"     {{if eq $s "year"}}selected{{end}}>По году</option>
       <option value="average"  {{if eq $s "average"}}selected{{end}}>По средней оценке</option>
+      <option value="critic"   {{if eq $s "critic"}}selected{{end}}>По оценке критиков</option>
+      <option value="player"   {{if eq $s "player"}}selected{{end}}>По оценке игроков</option>
       <option value="hltbmain" {{if eq $s "hltbmain"}}selected{{end}}>По времени (Main+Sides)</option>
     </select>
   </div>
@@ -181,17 +214,17 @@
         {{if .RuVoice}}<span class="lang-badge voice">RU VOICE</span>{{end}}
       </div>{{end}}
       <div class="scores">
-        <a class="score {{if not .Metacritic.Valid}}na{{end}}" href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">
-          <div class="v">{{if .Metacritic.Valid}}{{.Metacritic.Int64}}{{else}}—{{end}}</div>
-          <div class="l">Metacritic</div>
-        </a>
-        <a class="score {{if not .OpenCritic.Valid}}na{{end}}" href="{{.OpenCriticURL}}" target="_blank" rel="noopener" title="Открыть на OpenCritic">
-          <div class="v">{{if .OpenCritic.Valid}}{{.OpenCritic.Int64}}{{else}}—{{end}}</div>
-          <div class="l">OpenCritic</div>
-        </a>
         <div class="score {{if not .Average.Valid}}na{{end}}">
           <div class="v">{{if .Average.Valid}}{{printf "%.1f" .Average.Float64}}{{else}}—{{end}}</div>
           <div class="l">Среднее</div>
+        </div>
+        <div class="score {{if not .CriticAverage.Valid}}na{{end}}">
+          <div class="v">{{if .CriticAverage.Valid}}{{printf "%.1f" .CriticAverage.Float64}}{{else}}—{{end}}</div>
+          <div class="l">Критики</div>
+        </div>
+        <div class="score {{if not .PlayerAverage.Valid}}na{{end}}">
+          <div class="v">{{if .PlayerAverage.Valid}}{{printf "%.1f" .PlayerAverage.Float64}}{{else}}—{{end}}</div>
+          <div class="l">Игроки</div>
         </div>
       </div>
       <div class="scores">
@@ -199,10 +232,37 @@
           <div class="v">{{if .HLTBMainSec.Valid}}{{printf "%.1f" .HLTBHours}}ч{{else}}—{{end}}</div>
           <div class="l">Main+Sides</div>
         </a>
-        <a class="score {{if not .HLTBRating.Valid}}na{{end}}" href="{{.HLTBURL}}" target="_blank" rel="noopener" title="Открыть на HowLongToBeat">
-          <div class="v">{{if .HLTBRating.Valid}}{{.HLTBRating.Int64}}{{else}}—{{end}}</div>
+        <a class="score {{if not (and .HLTBRating.Valid (gt .HLTBRating.Int64 0))}}na{{end}}" href="{{.HLTBURL}}" target="_blank" rel="noopener" title="Открыть на HowLongToBeat">
+          <div class="v">{{if and .HLTBRating.Valid (gt .HLTBRating.Int64 0)}}{{.HLTBRating.Int64}}{{else}}—{{end}}</div>
           <div class="l">HLTB Rating</div>
         </a>
+      </div>
+      <div class="score-details">
+        <a class="score-line" href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">
+          <span class="name">MC critic</span>
+          <span class="bar"><span style="width:{{if and .Metacritic.Valid (gt .Metacritic.Int64 0)}}{{.Metacritic.Int64}}{{else}}0{{end}}%"></span></span>
+          <span class="num">{{if and .Metacritic.Valid (gt .Metacritic.Int64 0)}}{{.Metacritic.Int64}}{{else}}—{{end}}</span>
+        </a>
+        <a class="score-line" href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">
+          <span class="name">MC user</span>
+          <span class="bar"><span style="width:{{if and .MetacriticUser.Valid (gt .MetacriticUser.Int64 0)}}{{.MetacriticUser.Int64}}{{else}}0{{end}}%"></span></span>
+          <span class="num">{{if and .MetacriticUser.Valid (gt .MetacriticUser.Int64 0)}}{{.MetacriticUser.Int64}}{{else}}—{{end}}</span>
+        </a>
+        <a class="score-line" href="{{.OpenCriticURL}}" target="_blank" rel="noopener" title="Открыть на OpenCritic">
+          <span class="name">OC critic</span>
+          <span class="bar"><span style="width:{{if and .OpenCritic.Valid (gt .OpenCritic.Int64 0)}}{{.OpenCritic.Int64}}{{else}}0{{end}}%"></span></span>
+          <span class="num">{{if and .OpenCritic.Valid (gt .OpenCritic.Int64 0)}}{{.OpenCritic.Int64}}{{else}}—{{end}}</span>
+        </a>
+        <a class="score-line" href="{{.OpenCriticURL}}" target="_blank" rel="noopener" title="Открыть на OpenCritic">
+          <span class="name">OC player</span>
+          <span class="bar"><span style="width:{{if and .OpenCriticPlayer.Valid (gt .OpenCriticPlayer.Int64 0)}}{{.OpenCriticPlayer.Int64}}{{else}}0{{end}}%"></span></span>
+          <span class="num">{{if and .OpenCriticPlayer.Valid (gt .OpenCriticPlayer.Int64 0)}}{{.OpenCriticPlayer.Int64}}{{else}}—{{end}}</span>
+        </a>
+        {{if or .MetacriticUserCount.Valid .OpenCriticPlayerCount.Valid}}
+        <div class="score-counts">
+          {{if .MetacriticUserCount.Valid}}MC users: {{.MetacriticUserCount.Int64}}{{end}}{{if and .MetacriticUserCount.Valid .OpenCriticPlayerCount.Valid}} · {{end}}{{if .OpenCriticPlayerCount.Valid}}OC players: {{.OpenCriticPlayerCount.Int64}}{{end}}
+        </div>
+        {{end}}
       </div>
     </div>
   </div>
