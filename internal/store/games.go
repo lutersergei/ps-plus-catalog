@@ -216,7 +216,7 @@ UPDATE games SET hltb_main_extra = ?, hltb_rating = ?, hltb_id = ?, hltb_url = ?
 WHERE id = ?`, mainExtra, rating, hltbID, hltbURL, id); err != nil {
 		return err
 	}
-	return recomputeAverage(db, id)
+	return recomputeAverages(db, id)
 }
 
 // UpdateMetacritic записывает только critic score Metacritic и оставляет user
@@ -233,7 +233,7 @@ UPDATE games SET metacritic_score = ?, metacritic_user_score = ?, metacritic_use
 WHERE id = ?`, mc, userScore, userCount, id); err != nil {
 		return err
 	}
-	return recomputeAverage(db, id)
+	return recomputeAverages(db, id)
 }
 
 // UpdateOpenCritic записывает только critic score и URL OpenCritic. Сохранён
@@ -252,7 +252,7 @@ UPDATE games SET opencritic_score = ?, opencritic_url = ?, opencritic_id = ?,
 WHERE id = ?`, oc, ocURL, ocID, playerScore, playerCount, id); err != nil {
 		return err
 	}
-	return recomputeAverage(db, id)
+	return recomputeAverages(db, id)
 }
 
 // ResetMissingChecks сбрасывает отметки проверки у игр без соответствующей оценки,
@@ -281,25 +281,55 @@ func ResetMissingChecks(db *sql.DB) (mc, oc int64, err error) {
 	return mc, oc, nil
 }
 
-// averageExpr — выражение среднего по доступным оценкам: Metacritic, OpenCritic
-// и рейтинг HLTB (все в шкале 0–100). NULL, если нет ни одной.
+// averageExpr averages all available score sources. NULL and 0 are treated as
+// missing values because upstream APIs may use 0 as "no score".
 const averageExpr = `CASE
-  WHEN ((metacritic_score IS NOT NULL) + (opencritic_score IS NOT NULL) + (hltb_rating IS NOT NULL)) = 0 THEN NULL
+  WHEN ((COALESCE(metacritic_score,0) > 0) + (COALESCE(metacritic_user_score,0) > 0) + (COALESCE(opencritic_score,0) > 0) + (COALESCE(opencritic_player_score,0) > 0) + (COALESCE(hltb_rating,0) > 0)) = 0 THEN NULL
   ELSE ROUND(
-    (COALESCE(metacritic_score,0) + COALESCE(opencritic_score,0) + COALESCE(hltb_rating,0)) * 1.0
-    / ((metacritic_score IS NOT NULL) + (opencritic_score IS NOT NULL) + (hltb_rating IS NOT NULL)), 1)
+    (CASE WHEN COALESCE(metacritic_score,0) > 0 THEN metacritic_score ELSE 0 END
+     + CASE WHEN COALESCE(metacritic_user_score,0) > 0 THEN metacritic_user_score ELSE 0 END
+     + CASE WHEN COALESCE(opencritic_score,0) > 0 THEN opencritic_score ELSE 0 END
+     + CASE WHEN COALESCE(opencritic_player_score,0) > 0 THEN opencritic_player_score ELSE 0 END
+     + CASE WHEN COALESCE(hltb_rating,0) > 0 THEN hltb_rating ELSE 0 END) * 1.0
+    / ((COALESCE(metacritic_score,0) > 0) + (COALESCE(metacritic_user_score,0) > 0) + (COALESCE(opencritic_score,0) > 0) + (COALESCE(opencritic_player_score,0) > 0) + (COALESCE(hltb_rating,0) > 0)), 1)
 END`
 
-// recomputeAverage пересчитывает average_score из текущих значений оценок строки.
-func recomputeAverage(db *sql.DB, id string) error {
-	_, err := db.Exec(`UPDATE games SET average_score = (`+averageExpr+`) WHERE id = ?`, id)
+const criticAverageExpr = `CASE
+  WHEN ((COALESCE(metacritic_score,0) > 0) + (COALESCE(opencritic_score,0) > 0)) = 0 THEN NULL
+  ELSE ROUND(
+    (CASE WHEN COALESCE(metacritic_score,0) > 0 THEN metacritic_score ELSE 0 END
+     + CASE WHEN COALESCE(opencritic_score,0) > 0 THEN opencritic_score ELSE 0 END) * 1.0
+    / ((COALESCE(metacritic_score,0) > 0) + (COALESCE(opencritic_score,0) > 0)), 1)
+END`
+
+const playerAverageExpr = `CASE
+  WHEN ((COALESCE(metacritic_user_score,0) > 0) + (COALESCE(opencritic_player_score,0) > 0) + (COALESCE(hltb_rating,0) > 0)) = 0 THEN NULL
+  ELSE ROUND(
+    (CASE WHEN COALESCE(metacritic_user_score,0) > 0 THEN metacritic_user_score ELSE 0 END
+     + CASE WHEN COALESCE(opencritic_player_score,0) > 0 THEN opencritic_player_score ELSE 0 END
+     + CASE WHEN COALESCE(hltb_rating,0) > 0 THEN hltb_rating ELSE 0 END) * 1.0
+    / ((COALESCE(metacritic_user_score,0) > 0) + (COALESCE(opencritic_player_score,0) > 0) + (COALESCE(hltb_rating,0) > 0)), 1)
+END`
+
+// recomputeAverages пересчитывает все сохранённые сводные оценки строки.
+func recomputeAverages(db *sql.DB, id string) error {
+	_, err := db.Exec(`
+UPDATE games
+SET average_score = (`+averageExpr+`),
+    critic_average_score = (`+criticAverageExpr+`),
+    player_average_score = (`+playerAverageExpr+`)
+WHERE id = ?`, id)
 	return err
 }
 
-// RecomputeAllAverages пересчитывает среднее у всех игр (после изменения формулы
-// или массового обновления оценок).
+// RecomputeAllAverages пересчитывает сводные оценки у всех игр после изменения
+// формул или массового обновления оценок.
 func RecomputeAllAverages(db *sql.DB) error {
-	_, err := db.Exec(`UPDATE games SET average_score = (` + averageExpr + `)`)
+	_, err := db.Exec(`
+UPDATE games
+SET average_score = (` + averageExpr + `),
+    critic_average_score = (` + criticAverageExpr + `),
+    player_average_score = (` + playerAverageExpr + `)`)
 	return err
 }
 

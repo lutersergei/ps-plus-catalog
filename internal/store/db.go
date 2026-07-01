@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS games (
 	opencritic_player_score INTEGER,
 	opencritic_player_count INTEGER,
 	average_score     REAL,
+	critic_average_score REAL,
+	player_average_score REAL,
 	hltb_main_extra   INTEGER,   -- время прохождения Main + Sides, в секундах
 	hltb_rating       INTEGER,   -- пользовательский рейтинг HLTB (0–100)
 	hltb_id           INTEGER,
@@ -62,6 +64,8 @@ var migrations = []string{
 	`ALTER TABLE games ADD COLUMN opencritic_id INTEGER`,
 	`ALTER TABLE games ADD COLUMN opencritic_player_score INTEGER`,
 	`ALTER TABLE games ADD COLUMN opencritic_player_count INTEGER`,
+	`ALTER TABLE games ADD COLUMN critic_average_score REAL`,
+	`ALTER TABLE games ADD COLUMN player_average_score REAL`,
 }
 
 // Open открывает базу SQLite по указанному пути и применяет миграции.
@@ -71,6 +75,10 @@ func Open(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	if err := Migrate(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := RecomputeAllAverages(db); err != nil {
 		db.Close()
 		return nil, err
 	}

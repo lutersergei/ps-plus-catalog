@@ -171,7 +171,7 @@ func TestGamesNeedingOpenCriticRefreshesStaleRowsWithURL(t *testing.T) {
 	}
 }
 
-func TestUpdateStoresUserScoresWithoutChangingAverageFormula(t *testing.T) {
+func TestUpdateStoresUserScoresAndRecomputesAllAverages(t *testing.T) {
 	db := newTestDB(t, 1)
 	if err := UpdateMetacriticScores(
 		db,
@@ -193,14 +193,27 @@ func TestUpdateStoresUserScoresWithoutChangingAverageFormula(t *testing.T) {
 	); err != nil {
 		t.Fatalf("update opencritic: %v", err)
 	}
+	if err := UpdateHLTB(
+		db,
+		"g1",
+		sql.NullInt64{Int64: 3600, Valid: true},
+		sql.NullInt64{Int64: 75, Valid: true},
+		sql.NullInt64{Int64: 123, Valid: true},
+		sql.NullString{String: "https://howlongtobeat.com/game/123", Valid: true},
+	); err != nil {
+		t.Fatalf("update hltb: %v", err)
+	}
 
 	var mcUser, mcUserCount, ocID, ocPlayer, ocPlayerCount sql.NullInt64
-	var avg sql.NullFloat64
+	var avg, criticAvg, playerAvg sql.NullFloat64
 	if err := db.QueryRow(`
 SELECT metacritic_user_score, metacritic_user_count,
        opencritic_id, opencritic_player_score, opencritic_player_count,
-       average_score
-FROM games WHERE id = ?`, "g1").Scan(&mcUser, &mcUserCount, &ocID, &ocPlayer, &ocPlayerCount, &avg); err != nil {
+       average_score, critic_average_score, player_average_score
+FROM games WHERE id = ?`, "g1").Scan(
+		&mcUser, &mcUserCount, &ocID, &ocPlayer, &ocPlayerCount,
+		&avg, &criticAvg, &playerAvg,
+	); err != nil {
 		t.Fatalf("select: %v", err)
 	}
 	if !mcUser.Valid || mcUser.Int64 != 65 {
@@ -218,8 +231,64 @@ FROM games WHERE id = ?`, "g1").Scan(&mcUser, &mcUserCount, &ocID, &ocPlayer, &o
 	if !ocPlayerCount.Valid || ocPlayerCount.Int64 != 57 {
 		t.Fatalf("opencritic_player_count=%v, ждали 57", ocPlayerCount)
 	}
-	if !avg.Valid || avg.Float64 != 85 {
-		t.Fatalf("average_score=%v, ждали 85 по critic-only формуле", avg)
+	if !avg.Valid || avg.Float64 != 76 {
+		t.Fatalf("average_score=%v, ждали 76 по пяти источникам", avg)
+	}
+	if !criticAvg.Valid || criticAvg.Float64 != 85 {
+		t.Fatalf("critic_average_score=%v, ждали 85", criticAvg)
+	}
+	if !playerAvg.Valid || playerAvg.Float64 != 70 {
+		t.Fatalf("player_average_score=%v, ждали 70", playerAvg)
+	}
+}
+
+func TestRecomputeAveragesSkipsZeroScores(t *testing.T) {
+	db := newTestDB(t, 1)
+	if err := UpdateMetacriticScores(
+		db,
+		"g1",
+		sql.NullInt64{Int64: 0, Valid: true},
+		sql.NullInt64{Int64: 80, Valid: true},
+		sql.NullInt64{Int64: 10, Valid: true},
+	); err != nil {
+		t.Fatalf("update metacritic: %v", err)
+	}
+	if err := UpdateOpenCriticScores(
+		db,
+		"g1",
+		sql.NullInt64{Int64: 0, Valid: true},
+		sql.NullString{},
+		sql.NullInt64{},
+		sql.NullInt64{Int64: 0, Valid: true},
+		sql.NullInt64{Int64: 0, Valid: true},
+	); err != nil {
+		t.Fatalf("update opencritic: %v", err)
+	}
+	if err := UpdateHLTB(
+		db,
+		"g1",
+		sql.NullInt64{},
+		sql.NullInt64{Int64: 70, Valid: true},
+		sql.NullInt64{},
+		sql.NullString{},
+	); err != nil {
+		t.Fatalf("update hltb: %v", err)
+	}
+
+	var avg, criticAvg, playerAvg sql.NullFloat64
+	if err := db.QueryRow(`
+SELECT average_score, critic_average_score, player_average_score
+FROM games WHERE id = ?`, "g1").Scan(&avg, &criticAvg, &playerAvg); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if !avg.Valid || avg.Float64 != 75 {
+		t.Fatalf("average_score=%v, ждали 75", avg)
+	}
+	if criticAvg.Valid {
+		t.Fatalf("critic_average_score=%v, ждали NULL", criticAvg)
+	}
+	if !playerAvg.Valid || playerAvg.Float64 != 75 {
+		t.Fatalf("player_average_score=%v, ждали 75", playerAvg)
 	}
 }
 
