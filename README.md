@@ -17,6 +17,123 @@
   страницу. Фильтры/сортировка/пагинация работают серверным SQL через
   query-параметры.
 
+## Как собираются внешние оценки
+
+### Metacritic
+
+```text
+sync
+  |
+  v
+1. Берём игры, где mc_checked_at пустой или старше -refresh-days
+  |
+  v
+2. Строим slug из очищенного английского названия:
+   https://www.metacritic.com/game/{slug}/
+  |
+  v
+3. Загружаем страницу игры
+   404 -> считаем, что игры под этим slug нет
+   5xx/сеть -> не помечаем проверенной, повторим позже
+  |
+  v
+4. Достаём critic score:
+   JSON-LD aggregateRating.name == "Metascore"
+   fallback: текст "Metascore N out of 100"
+  |
+  v
+5. Достаём user score:
+   ищем в HTML canonical backend URL
+   https://backend.metacritic.com/reviews/metacritic/user/games/{canonical_slug}/stats/web...
+   если URL не найден -> fallback на исходный slug
+  |
+  v
+6. User score переводим из 0-10 в 0-100:
+   7.8 -> 78
+  |
+  v
+7. Сохраняем:
+   metacritic_score, metacritic_user_score, metacritic_user_count, mc_checked_at
+```
+
+User score не влияет на `average_score`: пока он только хранится. Ошибка при
+получении user score не отменяет сохранение critic score.
+
+### OpenCritic
+
+```text
+sync
+  |
+  v
+1. Собираем ключи RapidAPI:
+   OPENCRITIC_API_KEYS + OPENCRITIC_API_KEY
+   ключей нет -> OpenCritic пропускается
+  |
+  v
+2. Берём игры, где oc_checked_at пустой или старше -refresh-days
+   лимит за запуск: -max-oc * число ключей
+  |
+  v
+3. /game/search?criteria={clean_title}
+   выбираем best match:
+   точное нормализованное имя или близкий dist + проверка токенов
+  |
+  v
+4. /game/{opencritic_id}
+   достаём topCriticScore и canonical url
+  |
+  v
+5. Если задан OPENCRITIC_SITE_API_KEY:
+   https://api.opencritic.com/api/ratings/game/{opencritic_id}
+   Authorization: Bearer {OPENCRITIC_SITE_API_KEY}
+   median -> opencritic_player_score
+   count  -> opencritic_player_count
+  |
+  v
+6. Сохраняем:
+   opencritic_score, opencritic_id, opencritic_url,
+   opencritic_player_score, opencritic_player_count, oc_checked_at
+```
+
+При `429` текущий RapidAPI-ключ помечается исчерпанным и используется следующий.
+Если все ключи исчерпаны, OpenCritic-часть останавливается до следующего запуска.
+`median:null, count:0` означает, что Player Rating у OpenCritic отсутствует.
+
+### HowLongToBeat
+
+```text
+sync
+  |
+  v
+1. Берём игры, где hltb_checked_at пустой или старше -refresh-days
+   -max-hltb ограничивает размер пачки (0 = без ограничения)
+  |
+  v
+2. GET /api/bleed/init
+   получаем token + honeypot key/value
+  |
+  v
+3. POST /api/bleed
+   пробуем несколько вариантов запроса:
+   полное очищенное название -> первые 3 слова -> первые 2 слова
+  |
+  v
+4. Выбираем best match:
+   точное нормализованное имя или совпадение значимых токенов
+  |
+  v
+5. Сохраняем:
+   hltb_main_extra = comp_plus
+   hltb_rating = review_score
+   hltb_id = game_id
+   hltb_url = https://howlongtobeat.com/game/{game_id}
+   hltb_checked_at
+```
+
+Если HLTB вернул непустую выдачу, но нужной игры нет, это кэшируется как
+достоверное отсутствие. Если все варианты дали пустую выдачу, строка не
+помечается проверенной: это часто троттлинг, игра повторится в следующем sync.
+
 ## Требования
 
 - Go 1.25+
