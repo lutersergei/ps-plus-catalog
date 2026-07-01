@@ -116,3 +116,37 @@ func TestParseOpenCriticGameURL(t *testing.T) {
 		t.Fatalf("url=%q", pageURL)
 	}
 }
+
+func TestParseOpenCriticPlayerRating(t *testing.T) {
+	score, count, found, err := parseOpenCriticPlayerRating([]byte(`{
+		"_id": 1660,
+		"median": 70,
+		"count": 57
+	}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !found {
+		t.Fatal("found=false, ждали true")
+	}
+	if score != 70 {
+		t.Fatalf("score=%d, ждали 70", score)
+	}
+	if count != 57 {
+		t.Fatalf("count=%d, ждали 57", count)
+	}
+}
+
+func TestParseOpenCriticPlayerRatingTreatsMissingMedianAsNoData(t *testing.T) {
+	_, _, found, err := parseOpenCriticPlayerRating([]byte(`{
+		"_id": 1660,
+		"median": null,
+		"count": 0
+	}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if found {
+		t.Fatal("found=true, ждали false")
+	}
+}
