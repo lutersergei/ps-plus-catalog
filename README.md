@@ -2,8 +2,9 @@
 
 Каталог игр подписки **PlayStation Plus Extra (регион Турция)** с оценками
 **Metacritic**, **OpenCritic** и временем прохождения **HowLongToBeat**, с
-веб-страницей: пагинация, фильтры по году, жанру, средней оценке и времени
-прохождения, сортировка по году / средней оценке / названию / времени прохождения.
+веб-страницей: пагинация, фильтры по году, жанру, общей оценке, оценкам критиков,
+оценкам игроков и времени прохождения, сортировка по году / оценкам / названию /
+времени прохождения.
 
 ## Как это устроено
 
@@ -28,36 +29,45 @@ sync
 1. Берём игры, где mc_checked_at пустой или старше -refresh-days
   |
   v
-2. Строим slug из очищенного английского названия:
+2. Пробуем прямые slug-кандидаты:
+   - из исходного английского названия
+   - из очищенного английского названия
    https://www.metacritic.com/game/{slug}/
   |
   v
-3. Загружаем страницу игры
-   404 -> считаем, что игры под этим slug нет
+3. Если прямые slug-и не сработали, используем поиск Metacritic:
+   https://www.metacritic.com/search/{title}/
+   кандидаты проверяются консервативным title matching
+   неоднозначные совпадения пропускаются
+  |
+  v
+4. Загружаем страницу игры
+   404 -> пробуем следующий slug/кандидат
    5xx/сеть -> не помечаем проверенной, повторим позже
   |
   v
-4. Достаём critic score:
+5. Достаём critic score:
    JSON-LD aggregateRating.name == "Metascore"
    fallback: текст "Metascore N out of 100"
   |
   v
-5. Достаём user score:
+6. Достаём user score:
    ищем в HTML canonical backend URL
    https://backend.metacritic.com/reviews/metacritic/user/games/{canonical_slug}/stats/web...
    если URL не найден -> fallback на исходный slug
   |
   v
-6. User score переводим из 0-10 в 0-100:
+7. User score переводим из 0-10 в 0-100:
    7.8 -> 78
   |
   v
-7. Сохраняем:
-   metacritic_score, metacritic_user_score, metacritic_user_count, mc_checked_at
+8. Сохраняем:
+   metacritic_score, metacritic_url,
+   metacritic_user_score, metacritic_user_count, mc_checked_at
 ```
 
-User score не влияет на `average_score`: пока он только хранится. Ошибка при
-получении user score не отменяет сохранение critic score.
+Ошибка при получении user score не отменяет сохранение critic score.
+`metacritic_url` используется в UI как canonical-ссылка на найденную страницу.
 
 ### OpenCritic
 
@@ -250,8 +260,12 @@ testdata/                   фикстуры реальных ответов
 ## Заметки
 
 - Сопоставление игр с оценками — по английскому названию (`nameEn`) с чисткой
-  платформенных/издательских суффиксов. Совпадение неточное: часть игр останется
-  без оценки (в UI — «—»), такие случаи логируются.
+  платформенных/издательских суффиксов и fallback-поиском по источнику. Совпадение
+  консервативное: неоднозначные результаты не записываются, поэтому часть игр
+  останется без оценки (в UI — «—»).
+- `average_score` считается по доступным ненулевым источникам из пяти: Metacritic
+  critic/user, OpenCritic critic/player и HowLongToBeat rating. Отдельно хранятся
+  `critic_average_score` и `player_average_score` для фильтров и сортировки.
 - Первичный ключ БД — `productId` из API PS Store. Если у вас есть старая база
   данных, собранная до этого изменения, удалите её и запустите `sync` заново:
   имевшиеся там `conceptId`-ключи несовместимы со схемой.
