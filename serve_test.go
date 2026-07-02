@@ -99,3 +99,41 @@ func TestIndexTemplateRendersCriticAndPlayerControls(t *testing.T) {
 		}
 	}
 }
+
+func TestIndexTemplateRendersFirstAndLastPageLinks(t *testing.T) {
+	tmpl, err := template.New("index").Funcs(template.FuncMap{
+		"add": func(a, b int) int { return a + b },
+	}).Parse(indexHTML)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	data := pageData{
+		Result: store.ListResult{
+			Games: []store.GameView{{
+				ID:    "g1",
+				Title: "Game",
+			}},
+			Page:       3,
+			TotalPages: 5,
+		},
+		BaseQuery: template.URL("sort=title&order=asc"),
+		Pages:     []int{1, 2, 3, 4, 5},
+		HasPrev:   true,
+		HasNext:   true,
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`href="?sort=title&amp;order=asc&page=1">« Первая</a>`,
+		`href="?sort=title&amp;order=asc&page=5">Последняя »</a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("rendered template missing %q", want)
+		}
+	}
+}

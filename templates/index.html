@@ -270,12 +270,14 @@
 </div>
 
 <nav class="pager">
+  {{if .HasPrev}}<a href="?{{.BaseQuery}}&page=1">« Первая</a>{{else}}<span class="disabled">« Первая</span>{{end}}
   {{if .HasPrev}}<a href="?{{.BaseQuery}}&page={{add .Result.Page -1}}">‹ Назад</a>{{else}}<span class="disabled">‹ Назад</span>{{end}}
   {{$cur := .Result.Page}}{{$bq := .BaseQuery}}
   {{range .Pages}}
     {{if eq . $cur}}<span class="cur">{{.}}</span>{{else}}<a href="?{{$bq}}&page={{.}}">{{.}}</a>{{end}}
   {{end}}
   {{if .HasNext}}<a href="?{{.BaseQuery}}&page={{add .Result.Page 1}}">Вперёд ›</a>{{else}}<span class="disabled">Вперёд ›</span>{{end}}
+  {{if .HasNext}}<a href="?{{.BaseQuery}}&page={{.Result.TotalPages}}">Последняя »</a>{{else}}<span class="disabled">Последняя »</span>{{end}}
 </nav>
 {{else}}
 <div class="empty">Ничего не найдено по выбранным фильтрам.</div>
