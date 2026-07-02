@@ -1,6 +1,9 @@
 package scores
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestParseMetacriticUserStats(t *testing.T) {
 	score, count, found, err := parseMetacriticUserStats([]byte(`{
@@ -54,5 +57,46 @@ func TestMetacriticUserStatsURLUsesCanonicalSlugFromPage(t *testing.T) {
 	want := "https://backend.metacritic.com/reviews/metacritic/user/games/bound-2016/stats/web?componentName=user-score-summary&componentDisplayName=User+Score+Summary&componentType=MetaScoreSummary"
 	if got != want {
 		t.Fatalf("url=%q, ждали %q", got, want)
+	}
+}
+
+func TestParseMetacriticHollowKnightVoidheartCurrentPage(t *testing.T) {
+	raw, err := os.ReadFile("../../testdata/metacritic_hollow_knight_voidheart.html")
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	score, found, err := parseMetacritic(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !found {
+		t.Fatal("found=false, ждали true")
+	}
+	if score != 89 {
+		t.Fatalf("score=%d, ждали 89", score)
+	}
+}
+
+func TestParseMetacriticReadsNestedJSONLDGraph(t *testing.T) {
+	raw := []byte(`<script type="application/ld+json">{
+		"@graph": [
+			{
+				"@type": "VideoGame",
+				"aggregateRating": {
+					"name": "Metascore",
+					"ratingValue": "89"
+				}
+			}
+		]
+	}</script>`)
+	score, found, err := parseMetacritic(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !found {
+		t.Fatal("found=false, ждали true")
+	}
+	if score != 89 {
+		t.Fatalf("score=%d, ждали 89", score)
 	}
 }

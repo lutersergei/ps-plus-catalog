@@ -101,23 +101,9 @@ func MetacriticScores(ctx context.Context, c *http.Client, titleEn string) (Meta
 // JSON-LD оценки нет — запасной путь из разметки страницы.
 func parseMetacritic(html []byte) (int, bool, error) {
 	for _, m := range ldJSONRe.FindAllSubmatch(html, -1) {
-		var obj struct {
-			AggregateRating struct {
-				Name        string      `json:"name"`
-				RatingValue json.Number `json:"ratingValue"`
-			} `json:"aggregateRating"`
+		if score, ok := metacriticScoreFromJSONLD(m[1]); ok {
+			return score, true, nil
 		}
-		if err := json.Unmarshal(m[1], &obj); err != nil {
-			continue
-		}
-		if obj.AggregateRating.Name != "Metascore" || obj.AggregateRating.RatingValue == "" {
-			continue
-		}
-		f, err := obj.AggregateRating.RatingValue.Float64()
-		if err != nil {
-			continue
-		}
-		return int(math.Round(f)), true, nil
 	}
 	// запас: оценка в разметке (часть страниц без aggregateRating в JSON-LD)
 	if m := metascoreRe.FindSubmatch(html); m != nil {
@@ -126,6 +112,68 @@ func parseMetacritic(html []byte) (int, bool, error) {
 		}
 	}
 	return 0, false, nil
+}
+
+func metacriticScoreFromJSONLD(raw []byte) (int, bool) {
+	var data any
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&data); err != nil {
+		return 0, false
+	}
+	return metacriticScoreFromJSONValue(data)
+}
+
+func metacriticScoreFromJSONValue(v any) (int, bool) {
+	switch x := v.(type) {
+	case map[string]any:
+		if score, ok := metacriticScoreFromAggregateRating(x["aggregateRating"]); ok {
+			return score, true
+		}
+		for _, child := range x {
+			if score, ok := metacriticScoreFromJSONValue(child); ok {
+				return score, true
+			}
+		}
+	case []any:
+		for _, child := range x {
+			if score, ok := metacriticScoreFromJSONValue(child); ok {
+				return score, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func metacriticScoreFromAggregateRating(v any) (int, bool) {
+	rating, ok := v.(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	name, _ := rating["name"].(string)
+	if name != "Metascore" {
+		return 0, false
+	}
+	score, ok := jsonNumberToFloat(rating["ratingValue"])
+	if !ok || math.IsNaN(score) || math.IsInf(score, 0) || score < 0 || score > 100 {
+		return 0, false
+	}
+	return int(math.Round(score)), true
+}
+
+func jsonNumberToFloat(v any) (float64, bool) {
+	switch x := v.(type) {
+	case json.Number:
+		f, err := x.Float64()
+		return f, err == nil
+	case float64:
+		return x, true
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(x), 64)
+		return f, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func metacriticUserStatsURL(pageHTML []byte, fallbackSlug string) string {
