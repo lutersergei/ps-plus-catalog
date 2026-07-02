@@ -54,33 +54,60 @@ func MetacriticScore(ctx context.Context, c *http.Client, titleEn string) (score
 // MetacriticScores возвращает Metascore и User Score игры. User Score берётся из
 // backend-компонента Metacritic и переводится из шкалы 0-10 в 0-100.
 func MetacriticScores(ctx context.Context, c *http.Client, titleEn string) (MetacriticResult, error) {
-	slug := Slugify(CleanTitle(titleEn))
+	for _, slug := range metacriticSlugCandidates(titleEn) {
+		res, found, err := metacriticScoresBySlug(ctx, c, slug)
+		if err != nil {
+			return MetacriticResult{}, err
+		}
+		if found {
+			return res, nil
+		}
+	}
+	return MetacriticResult{}, nil
+}
+
+func metacriticSlugCandidates(titleEn string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(slug string) {
+		if slug == "" || seen[slug] {
+			return
+		}
+		seen[slug] = true
+		out = append(out, slug)
+	}
+	add(Slugify(titleEn))
+	add(Slugify(CleanTitle(titleEn)))
+	return out
+}
+
+func metacriticScoresBySlug(ctx context.Context, c *http.Client, slug string) (MetacriticResult, bool, error) {
 	url := "https://www.metacritic.com/game/" + slug + "/"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return MetacriticResult{}, err
+		return MetacriticResult{}, false, err
 	}
 	req.Header.Set("User-Agent", mcUserAgent)
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
 	resp, err := c.Do(req)
 	if err != nil {
-		return MetacriticResult{}, fmt.Errorf("metacritic fetch: %w", err)
+		return MetacriticResult{}, false, fmt.Errorf("metacritic fetch: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return MetacriticResult{}, nil // игры нет под таким slug
+		return MetacriticResult{}, false, nil // игры нет под таким slug
 	}
 	if resp.StatusCode != http.StatusOK {
-		return MetacriticResult{}, fmt.Errorf("metacritic status %d", resp.StatusCode)
+		return MetacriticResult{}, false, fmt.Errorf("metacritic status %d", resp.StatusCode)
 	}
 	body, err := readLimited(resp.Body, maxHTMLBytes)
 	if err != nil {
-		return MetacriticResult{}, fmt.Errorf("metacritic body: %w", err)
+		return MetacriticResult{}, false, fmt.Errorf("metacritic body: %w", err)
 	}
 	score, found, err := parseMetacritic(body)
 	if err != nil {
-		return MetacriticResult{}, err
+		return MetacriticResult{}, false, err
 	}
 	res := MetacriticResult{}
 	if found {
@@ -93,7 +120,7 @@ func MetacriticScores(ctx context.Context, c *http.Client, titleEn string) (Meta
 	} else {
 		res.User = user
 	}
-	return res, nil
+	return res, true, nil
 }
 
 // parseMetacritic извлекает Metascore: приоритетно из JSON-LD (authoritative;
