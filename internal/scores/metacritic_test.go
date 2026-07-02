@@ -193,7 +193,7 @@ func TestMetacriticScoresFallsBackToSearchCanonicalMatch(t *testing.T) {
 	if got.PageURL != "https://www.metacritic.com/game/no-more-heroes-iii/" {
 		t.Fatalf("PageURL=%q", got.PageURL)
 	}
-	wantPaths := []string{"/game/no-more-heroes-3/", "/search/No More Heroes 3/", "/game/rhythm-heaven-groove/", "/game/no-more-heroes-iii/"}
+	wantPaths := []string{"/game/no-more-heroes-3/", "/search/No More Heroes 3/", "/game/no-more-heroes-iii/"}
 	if strings.Join(pagePaths, "|") != strings.Join(wantPaths, "|") {
 		t.Fatalf("page paths=%v, ждали %v", pagePaths, wantPaths)
 	}
@@ -227,6 +227,27 @@ func TestMetacriticScoresRejectsSearchMismatch(t *testing.T) {
 	}
 	if got.Critic.Found || got.User.Found || got.PageURL != "" {
 		t.Fatalf("result=%+v, ждали пустой результат", got)
+	}
+}
+
+func TestMetacriticTitlesMatchKnownVariants(t *testing.T) {
+	tests := []struct {
+		want  string
+		got   string
+		match bool
+	}{
+		{"No More Heroes 3", "No More Heroes III", true},
+		{"Warhammer 40,000: Space Marine 2", "Warhammer 40000: Space Marine II", true},
+		{"Worms W.M.D", "Worms WMD", true},
+		{"Assassin's Creed Freedom Cry", "Assassin's Creed IV: Black Flag - Freedom Cry", true},
+		{"WRC Generations – The FIA WRC Official Game", "WRC Generations", true},
+		{"Mystic Pillars X Kantara", "Mystic Pillars", false},
+		{"No More Heroes 3", "Rhythm Heaven Groove", false},
+	}
+	for _, tt := range tests {
+		if got := metacriticTitlesMatch(tt.want, tt.got); got != tt.match {
+			t.Fatalf("metacriticTitlesMatch(%q, %q)=%v, ждали %v", tt.want, tt.got, got, tt.match)
+		}
 	}
 }
 

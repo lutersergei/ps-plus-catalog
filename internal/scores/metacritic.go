@@ -103,9 +103,16 @@ func metacriticSlugCandidates(titleEn string) []string {
 		seen[slug] = true
 		out = append(out, slug)
 	}
+	add(Slugify(metacriticSlugTitle(titleEn)))
 	add(Slugify(titleEn))
 	add(Slugify(CleanTitle(titleEn)))
 	return out
+}
+
+func metacriticSlugTitle(title string) string {
+	title = strings.NewReplacer("’", "", "'", "", "®", " ", "™", " ").Replace(title)
+	title = strings.NewReplacer("FARCRY", "Far Cry", "Farcry", "Far Cry", "farcry", "far cry").Replace(title)
+	return strings.Join(strings.Fields(title), " ")
 }
 
 // MetacriticSlug возвращает первый slug-кандидат для прямой ссылки на страницу
@@ -193,10 +200,10 @@ func metacriticSearchSlugs(ctx context.Context, c *http.Client, titleEn string) 
 	if err != nil {
 		return nil, fmt.Errorf("metacritic search body: %w", err)
 	}
-	return parseMetacriticSearchSlugs(body), nil
+	return parseMetacriticSearchSlugs(body, titleEn), nil
 }
 
-func parseMetacriticSearchSlugs(body []byte) []string {
+func parseMetacriticSearchSlugs(body []byte, titleEn string) []string {
 	skip := map[string]bool{
 		"all":           true,
 		"ps5":           true,
@@ -210,7 +217,7 @@ func parseMetacriticSearchSlugs(body []byte) []string {
 	var out []string
 	for _, m := range mcSearchGameURLRe.FindAllSubmatch(body, -1) {
 		slug := string(m[1])
-		if skip[slug] || seen[slug] {
+		if skip[slug] || seen[slug] || !metacriticSearchSlugMatches(titleEn, slug) {
 			continue
 		}
 		seen[slug] = true
@@ -220,6 +227,18 @@ func parseMetacriticSearchSlugs(body []byte) []string {
 		}
 	}
 	return out
+}
+
+func metacriticSearchSlugMatches(title, slug string) bool {
+	if title == "" {
+		return true
+	}
+	want := metacriticTitleTokens(title)
+	got := metacriticTitleTokens(strings.ReplaceAll(slug, "-", " "))
+	if len(want) == 0 || len(got) == 0 {
+		return false
+	}
+	return tokenSetSubset(want, got) || tokenSetSubset(got, want)
 }
 
 // parseMetacritic извлекает Metascore: приоритетно из JSON-LD (authoritative;
@@ -291,10 +310,10 @@ func metacriticTitlesMatch(want, got string) bool {
 	if tokenSetsEqual(wantTokens, gotTokens) {
 		return true
 	}
-	if tokenSetSubset(gotTokens, wantTokens) && onlyGenericExtras(wantTokens, gotTokens) {
+	if tokenSetSubset(wantTokens, gotTokens) {
 		return true
 	}
-	if tokenSetSubset(wantTokens, gotTokens) && onlyGenericExtras(gotTokens, wantTokens) {
+	if tokenSetSubset(gotTokens, wantTokens) && onlyGenericExtras(wantTokens, gotTokens) {
 		return true
 	}
 	return false
@@ -305,6 +324,18 @@ func metacriticTitleTokens(s string) map[string]bool {
 	words := strings.Fields(NormalizeTitle(s))
 	out := map[string]bool{}
 	for i := 0; i < len(words); i++ {
+		if len(words[i]) == 1 {
+			var acronym strings.Builder
+			j := i
+			for ; j < len(words) && len(words[j]) == 1; j++ {
+				acronym.WriteString(words[j])
+			}
+			if acronym.Len() > 1 {
+				out[acronym.String()] = true
+				i = j - 1
+				continue
+			}
+		}
 		w := metacriticNormalizeToken(words[i])
 		if w == "" || metacriticStopToken(w) {
 			continue
