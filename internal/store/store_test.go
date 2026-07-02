@@ -191,6 +191,7 @@ func TestUpdateStoresUserScoresAndRecomputesAllAverages(t *testing.T) {
 		sql.NullInt64{Int64: 80, Valid: true},
 		sql.NullInt64{Int64: 65, Valid: true},
 		sql.NullInt64{Int64: 120, Valid: true},
+		sql.NullString{String: "https://www.metacritic.com/game/example/", Valid: true},
 	); err != nil {
 		t.Fatalf("update metacritic: %v", err)
 	}
@@ -217,13 +218,14 @@ func TestUpdateStoresUserScoresAndRecomputesAllAverages(t *testing.T) {
 	}
 
 	var mcUser, mcUserCount, ocID, ocPlayer, ocPlayerCount sql.NullInt64
+	var mcURL sql.NullString
 	var avg, criticAvg, playerAvg sql.NullFloat64
 	if err := db.QueryRow(`
-SELECT metacritic_user_score, metacritic_user_count,
+SELECT metacritic_user_score, metacritic_user_count, metacritic_url,
        opencritic_id, opencritic_player_score, opencritic_player_count,
        average_score, critic_average_score, player_average_score
 FROM games WHERE id = ?`, "g1").Scan(
-		&mcUser, &mcUserCount, &ocID, &ocPlayer, &ocPlayerCount,
+		&mcUser, &mcUserCount, &mcURL, &ocID, &ocPlayer, &ocPlayerCount,
 		&avg, &criticAvg, &playerAvg,
 	); err != nil {
 		t.Fatalf("select: %v", err)
@@ -233,6 +235,9 @@ FROM games WHERE id = ?`, "g1").Scan(
 	}
 	if !mcUserCount.Valid || mcUserCount.Int64 != 120 {
 		t.Fatalf("metacritic_user_count=%v, ждали 120", mcUserCount)
+	}
+	if !mcURL.Valid || mcURL.String != "https://www.metacritic.com/game/example/" {
+		t.Fatalf("metacritic_url=%v", mcURL)
 	}
 	if !ocID.Valid || ocID.Int64 != 1660 {
 		t.Fatalf("opencritic_id=%v, ждали 1660", ocID)
@@ -262,6 +267,7 @@ func TestRecomputeAveragesSkipsZeroScores(t *testing.T) {
 		sql.NullInt64{Int64: 0, Valid: true},
 		sql.NullInt64{Int64: 80, Valid: true},
 		sql.NullInt64{Int64: 10, Valid: true},
+		sql.NullString{},
 	); err != nil {
 		t.Fatalf("update metacritic: %v", err)
 	}
@@ -418,6 +424,17 @@ func TestHLTBURLUsesDirectGamePageWhenKnown(t *testing.T) {
 func TestMetacriticURLUsesRawSlugFirst(t *testing.T) {
 	g := GameView{TitleEn: "Hollow Knight Voidheart Edition"}
 	want := "https://www.metacritic.com/game/hollow-knight-voidheart-edition/"
+	if got := g.MetacriticURL(); got != want {
+		t.Fatalf("MetacriticURL=%q, ждали %q", got, want)
+	}
+}
+
+func TestMetacriticURLUsesStoredPageWhenKnown(t *testing.T) {
+	g := GameView{
+		TitleEn:           "No More Heroes 3",
+		MetacriticPageURL: sql.NullString{String: "https://www.metacritic.com/game/no-more-heroes-iii/", Valid: true},
+	}
+	want := "https://www.metacritic.com/game/no-more-heroes-iii/"
 	if got := g.MetacriticURL(); got != want {
 		t.Fatalf("MetacriticURL=%q, ждали %q", got, want)
 	}

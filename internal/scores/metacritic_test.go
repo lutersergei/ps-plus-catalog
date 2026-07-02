@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -150,6 +151,85 @@ func TestMetacriticScoresTriesRawSlugBeforeCleanedTitle(t *testing.T) {
 	}
 }
 
+func TestMetacriticScoresFallsBackToSearchCanonicalMatch(t *testing.T) {
+	var pagePaths []string
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Host {
+		case "www.metacritic.com":
+			pagePaths = append(pagePaths, req.URL.Path)
+			switch {
+			case req.URL.Path == "/game/no-more-heroes-3/":
+				return testHTTPResponse(http.StatusNotFound, ""), nil
+			case strings.HasPrefix(req.URL.Path, "/search/"):
+				return testHTTPResponse(http.StatusOK, `<a href="/game/rhythm-heaven-groove/">popular</a><a href="/game/no-more-heroes-iii/">No More Heroes III</a>`), nil
+			case req.URL.Path == "/game/rhythm-heaven-groove/":
+				return testHTTPResponse(http.StatusOK, metacriticTestPage("Rhythm Heaven Groove", 82)), nil
+			case req.URL.Path == "/game/no-more-heroes-iii/":
+				return testHTTPResponse(http.StatusOK, metacriticTestPage("No More Heroes III", 75)), nil
+			default:
+				t.Fatalf("unexpected metacritic path: %s", req.URL.Path)
+			}
+		case "backend.metacritic.com":
+			if !strings.Contains(req.URL.Path, "/no-more-heroes-iii/") {
+				t.Fatalf("unexpected user score path: %s", req.URL.Path)
+			}
+			return testHTTPResponse(http.StatusOK, `{"data":{"item":{"max":10,"score":7.7,"reviewCount":44}}}`), nil
+		default:
+			t.Fatalf("unexpected host: %s", req.URL.Host)
+		}
+		return nil, nil
+	})}
+
+	got, err := MetacriticScores(context.Background(), client, "No More Heroes 3")
+	if err != nil {
+		t.Fatalf("scores: %v", err)
+	}
+	if !got.Critic.Found || got.Critic.Score != 75 {
+		t.Fatalf("critic=%+v, ждали score=75 found=true", got.Critic)
+	}
+	if !got.User.Found || got.User.Score != 77 || got.User.Count != 44 {
+		t.Fatalf("user=%+v, ждали score=77 count=44 found=true", got.User)
+	}
+	if got.PageURL != "https://www.metacritic.com/game/no-more-heroes-iii/" {
+		t.Fatalf("PageURL=%q", got.PageURL)
+	}
+	wantPaths := []string{"/game/no-more-heroes-3/", "/search/No More Heroes 3/", "/game/rhythm-heaven-groove/", "/game/no-more-heroes-iii/"}
+	if strings.Join(pagePaths, "|") != strings.Join(wantPaths, "|") {
+		t.Fatalf("page paths=%v, ждали %v", pagePaths, wantPaths)
+	}
+}
+
+func TestMetacriticScoresRejectsSearchMismatch(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Host {
+		case "www.metacritic.com":
+			switch {
+			case req.URL.Path == "/game/no-more-heroes-3/":
+				return testHTTPResponse(http.StatusNotFound, ""), nil
+			case strings.HasPrefix(req.URL.Path, "/search/"):
+				return testHTTPResponse(http.StatusOK, `<a href="/game/rhythm-heaven-groove/">popular</a>`), nil
+			case req.URL.Path == "/game/rhythm-heaven-groove/":
+				return testHTTPResponse(http.StatusOK, metacriticTestPage("Rhythm Heaven Groove", 82)), nil
+			default:
+				t.Fatalf("unexpected metacritic path: %s", req.URL.Path)
+			}
+		case "backend.metacritic.com":
+			return testHTTPResponse(http.StatusOK, `{"data":{"item":{"max":10,"score":9,"reviewCount":1}}}`), nil
+		default:
+			t.Fatalf("unexpected host: %s", req.URL.Host)
+		}
+		return nil, nil
+	})}
+
+	got, err := MetacriticScores(context.Background(), client, "No More Heroes 3")
+	if err != nil {
+		t.Fatalf("scores: %v", err)
+	}
+	if got.Critic.Found || got.User.Found || got.PageURL != "" {
+		t.Fatalf("result=%+v, ждали пустой результат", got)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -162,4 +242,8 @@ func testHTTPResponse(status int, body string) *http.Response {
 		Header:     make(http.Header),
 		Body:       io.NopCloser(strings.NewReader(body)),
 	}
+}
+
+func metacriticTestPage(name string, score int) string {
+	return `<script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"` + name + `","aggregateRating":{"@type":"AggregateRating","name":"Metascore","ratingValue":` + strconv.Itoa(score) + `}}</script>`
 }

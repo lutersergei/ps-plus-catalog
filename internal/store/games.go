@@ -222,15 +222,15 @@ WHERE id = ?`, mainExtra, rating, hltbID, hltbURL, id); err != nil {
 // UpdateMetacritic записывает только critic score Metacritic и оставляет user
 // score пустым. Сохранён для старых вызовов и тестов.
 func UpdateMetacritic(db *sql.DB, id string, mc sql.NullInt64) error {
-	return UpdateMetacriticScores(db, id, mc, sql.NullInt64{}, sql.NullInt64{})
+	return UpdateMetacriticScores(db, id, mc, sql.NullInt64{}, sql.NullInt64{}, sql.NullString{})
 }
 
 // UpdateMetacriticScores записывает Metacritic critic score и user score.
 // userCount.Valid=false означает, что число пользовательских оценок неизвестно.
-func UpdateMetacriticScores(db *sql.DB, id string, mc, userScore, userCount sql.NullInt64) error {
+func UpdateMetacriticScores(db *sql.DB, id string, mc, userScore, userCount sql.NullInt64, pageURL sql.NullString) error {
 	if _, err := db.Exec(`
-UPDATE games SET metacritic_score = ?, metacritic_user_score = ?, metacritic_user_count = ?, mc_checked_at = CURRENT_TIMESTAMP
-WHERE id = ?`, mc, userScore, userCount, id); err != nil {
+UPDATE games SET metacritic_score = ?, metacritic_url = ?, metacritic_user_score = ?, metacritic_user_count = ?, mc_checked_at = CURRENT_TIMESTAMP
+WHERE id = ?`, mc, pageURL, userScore, userCount, id); err != nil {
 		return err
 	}
 	return recomputeAverages(db, id)

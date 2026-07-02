@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS games (
 	store_url         TEXT,
 	active            INTEGER NOT NULL DEFAULT 1,
 	metacritic_score  INTEGER,
+	metacritic_url    TEXT,
 	metacritic_user_score INTEGER,
 	metacritic_user_count INTEGER,
 	opencritic_score  INTEGER,
@@ -66,6 +67,7 @@ var migrations = []string{
 	`ALTER TABLE games ADD COLUMN opencritic_player_count INTEGER`,
 	`ALTER TABLE games ADD COLUMN critic_average_score REAL`,
 	`ALTER TABLE games ADD COLUMN player_average_score REAL`,
+	`ALTER TABLE games ADD COLUMN metacritic_url TEXT`,
 }
 
 // Open открывает базу SQLite по указанному пути и применяет миграции.

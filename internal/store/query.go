@@ -42,6 +42,7 @@ type GameView struct {
 	ImageURL              string
 	StoreURL              string
 	Metacritic            sql.NullInt64
+	MetacriticPageURL     sql.NullString
 	MetacriticUser        sql.NullInt64
 	MetacriticUserCount   sql.NullInt64
 	OpenCritic            sql.NullInt64
@@ -81,6 +82,9 @@ func (g GameView) searchTerm() string {
 // MetacriticURL — прямая ссылка на страницу игры (slug строится из английского
 // названия той же логикой, что и при сборе оценки). Если slug пуст — поиск.
 func (g GameView) MetacriticURL() string {
+	if g.MetacriticPageURL.Valid && strings.HasPrefix(g.MetacriticPageURL.String, "https://www.metacritic.com/") {
+		return g.MetacriticPageURL.String
+	}
 	t := g.TitleEn
 	if t == "" {
 		t = g.Title
@@ -287,7 +291,7 @@ func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
 
 	query := `
 SELECT id, title, COALESCE(title_en,''), COALESCE(release_year,0), COALESCE(platforms,''), COALESCE(image_url,''),
-       COALESCE(store_url,''), metacritic_score, metacritic_user_score, metacritic_user_count,
+       COALESCE(store_url,''), metacritic_score, metacritic_url, metacritic_user_score, metacritic_user_count,
        opencritic_score, opencritic_url, opencritic_player_score, opencritic_player_count,
        average_score, critic_average_score, player_average_score,
        hltb_main_extra, hltb_rating, hltb_url, COALESCE(screen_langs,''), COALESCE(spoken_langs,'')
@@ -305,7 +309,7 @@ FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
 		var g GameView
 		var screenLangs, spokenLangs string
 		if err := rows.Scan(&g.ID, &g.Title, &g.TitleEn, &g.ReleaseYear, &g.Platforms, &g.ImageURL,
-			&g.StoreURL, &g.Metacritic, &g.MetacriticUser, &g.MetacriticUserCount,
+			&g.StoreURL, &g.Metacritic, &g.MetacriticPageURL, &g.MetacriticUser, &g.MetacriticUserCount,
 			&g.OpenCritic, &g.OpenCriticPageURL, &g.OpenCriticPlayer, &g.OpenCriticPlayerCount,
 			&g.Average, &g.CriticAverage, &g.PlayerAverage,
 			&g.HLTBMainSec, &g.HLTBRating, &g.HLTBPageURL, &screenLangs, &spokenLangs); err != nil {

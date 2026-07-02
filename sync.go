@@ -268,7 +268,11 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 			if res.UserErr != nil {
 				log.Printf("[mc-user] %s: %v", t.Title, res.UserErr)
 			}
-			if err := store.UpdateMetacriticScores(db, t.ID, mc, userScore, userCount); err != nil {
+			var mcURL sql.NullString
+			if res.PageURL != "" {
+				mcURL = sql.NullString{String: res.PageURL, Valid: true}
+			}
+			if err := store.UpdateMetacriticScores(db, t.ID, mc, userScore, userCount, mcURL); err != nil {
 				return fmt.Errorf("update mc %s: %w", t.ID, err)
 			}
 		}

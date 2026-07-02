@@ -8,6 +8,7 @@ import (
 	"html"
 	"math"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -24,6 +25,7 @@ var ldJSONRe = regexp.MustCompile(`(?s)<script type="application/ld\+json">(.*?)
 var metascoreRe = regexp.MustCompile(`Metascore (\d{1,3}) out of 100`)
 var mcUserStatsURLRe = regexp.MustCompile(`https://backend\.metacritic\.com/reviews/metacritic/user/games/[^"'<>\\]+/stats/web\?[^"'<>\\]+`)
 var mcUserAnyURLRe = regexp.MustCompile(`https://backend\.metacritic\.com/reviews/metacritic/user/games/([^/"'<>\\]+)/`)
+var mcSearchGameURLRe = regexp.MustCompile(`/game/([a-z0-9][a-z0-9-]*)/`)
 
 // Rating — оценка источника в шкале 0-100 и опциональное число голосов/рецензий.
 type Rating struct {
@@ -38,7 +40,11 @@ type Rating struct {
 type MetacriticResult struct {
 	Critic  Rating
 	User    Rating
+	PageURL string
 	UserErr error
+
+	pageTitle string
+	pageHTML  []byte
 }
 
 // MetacriticScore возвращает Metascore игры по её английскому названию.
@@ -54,14 +60,35 @@ func MetacriticScore(ctx context.Context, c *http.Client, titleEn string) (score
 // MetacriticScores возвращает Metascore и User Score игры. User Score берётся из
 // backend-компонента Metacritic и переводится из шкалы 0-10 в 0-100.
 func MetacriticScores(ctx context.Context, c *http.Client, titleEn string) (MetacriticResult, error) {
+	seen := map[string]bool{}
 	for _, slug := range metacriticSlugCandidates(titleEn) {
-		res, found, err := metacriticScoresBySlug(ctx, c, slug)
+		seen[slug] = true
+		res, found, err := metacriticScoresBySlug(ctx, c, slug, true)
 		if err != nil {
 			return MetacriticResult{}, err
 		}
 		if found {
 			return res, nil
 		}
+	}
+	searchSlugs, err := metacriticSearchSlugs(ctx, c, titleEn)
+	if err != nil {
+		return MetacriticResult{}, err
+	}
+	for _, slug := range searchSlugs {
+		if seen[slug] {
+			continue
+		}
+		seen[slug] = true
+		res, found, err := metacriticScoresBySlug(ctx, c, slug, false)
+		if err != nil {
+			return MetacriticResult{}, err
+		}
+		if !found || !metacriticTitlesMatch(titleEn, res.pageTitle) {
+			continue
+		}
+		metacriticFillUserScore(ctx, c, slug, res.pageHTML, &res)
+		return res, nil
 	}
 	return MetacriticResult{}, nil
 }
@@ -92,9 +119,9 @@ func MetacriticSlug(titleEn string) string {
 	return candidates[0]
 }
 
-func metacriticScoresBySlug(ctx context.Context, c *http.Client, slug string) (MetacriticResult, bool, error) {
-	url := "https://www.metacritic.com/game/" + slug + "/"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func metacriticScoresBySlug(ctx context.Context, c *http.Client, slug string, fetchUser bool) (MetacriticResult, bool, error) {
+	pageURL := "https://www.metacritic.com/game/" + slug + "/"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
 	if err != nil {
 		return MetacriticResult{}, false, err
 	}
@@ -120,18 +147,79 @@ func metacriticScoresBySlug(ctx context.Context, c *http.Client, slug string) (M
 	if err != nil {
 		return MetacriticResult{}, false, err
 	}
-	res := MetacriticResult{}
+	res := MetacriticResult{PageURL: pageURL, pageTitle: parseMetacriticTitle(body), pageHTML: body}
 	if found {
 		res.Critic = Rating{Score: score, Found: true}
 	}
-	userURL := metacriticUserStatsURL(body, slug)
+	if fetchUser {
+		metacriticFillUserScore(ctx, c, slug, body, &res)
+	}
+	return res, true, nil
+}
+
+func metacriticFillUserScore(ctx context.Context, c *http.Client, slug string, pageHTML []byte, res *MetacriticResult) {
+	if res == nil {
+		return
+	}
+	userURL := metacriticUserStatsURL(pageHTML, slug)
 	user, err := metacriticUserScore(ctx, c, userURL, slug)
 	if err != nil {
 		res.UserErr = err
 	} else {
 		res.User = user
 	}
-	return res, true, nil
+}
+
+func metacriticSearchSlugs(ctx context.Context, c *http.Client, titleEn string) ([]string, error) {
+	searchURL := "https://www.metacritic.com/search/" + url.PathEscape(titleEn) + "/"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", mcUserAgent)
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("metacritic search fetch: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("metacritic search status %d", resp.StatusCode)
+	}
+	body, err := readLimited(resp.Body, maxHTMLBytes)
+	if err != nil {
+		return nil, fmt.Errorf("metacritic search body: %w", err)
+	}
+	return parseMetacriticSearchSlugs(body), nil
+}
+
+func parseMetacriticSearchSlugs(body []byte) []string {
+	skip := map[string]bool{
+		"all":           true,
+		"ps5":           true,
+		"ps4":           true,
+		"xbox-series-x": true,
+		"xbox-one":      true,
+		"pc":            true,
+		"switch":        true,
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, m := range mcSearchGameURLRe.FindAllSubmatch(body, -1) {
+		slug := string(m[1])
+		if skip[slug] || seen[slug] {
+			continue
+		}
+		seen[slug] = true
+		out = append(out, slug)
+		if len(out) >= 40 {
+			break
+		}
+	}
+	return out
 }
 
 // parseMetacritic извлекает Metascore: приоритетно из JSON-LD (authoritative;
@@ -150,6 +238,138 @@ func parseMetacritic(html []byte) (int, bool, error) {
 		}
 	}
 	return 0, false, nil
+}
+
+func parseMetacriticTitle(html []byte) string {
+	for _, m := range ldJSONRe.FindAllSubmatch(html, -1) {
+		if title := metacriticTitleFromJSONLD(m[1]); title != "" {
+			return title
+		}
+	}
+	return ""
+}
+
+func metacriticTitleFromJSONLD(raw []byte) string {
+	var data any
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&data); err != nil {
+		return ""
+	}
+	return metacriticTitleFromJSONValue(data)
+}
+
+func metacriticTitleFromJSONValue(v any) string {
+	switch x := v.(type) {
+	case map[string]any:
+		if typ, _ := x["@type"].(string); typ == "VideoGame" {
+			if name, _ := x["name"].(string); name != "" {
+				return html.UnescapeString(name)
+			}
+		}
+		for _, child := range x {
+			if title := metacriticTitleFromJSONValue(child); title != "" {
+				return title
+			}
+		}
+	case []any:
+		for _, child := range x {
+			if title := metacriticTitleFromJSONValue(child); title != "" {
+				return title
+			}
+		}
+	}
+	return ""
+}
+
+func metacriticTitlesMatch(want, got string) bool {
+	wantTokens := metacriticTitleTokens(want)
+	gotTokens := metacriticTitleTokens(got)
+	if len(wantTokens) == 0 || len(gotTokens) == 0 {
+		return false
+	}
+	if tokenSetsEqual(wantTokens, gotTokens) {
+		return true
+	}
+	if tokenSetSubset(gotTokens, wantTokens) && onlyGenericExtras(wantTokens, gotTokens) {
+		return true
+	}
+	if tokenSetSubset(wantTokens, gotTokens) && onlyGenericExtras(gotTokens, wantTokens) {
+		return true
+	}
+	return false
+}
+
+func metacriticTitleTokens(s string) map[string]bool {
+	s = strings.NewReplacer("40 000", "40000", "40,000", "40000").Replace(matchClean(s))
+	words := strings.Fields(NormalizeTitle(s))
+	out := map[string]bool{}
+	for i := 0; i < len(words); i++ {
+		w := metacriticNormalizeToken(words[i])
+		if w == "" || metacriticStopToken(w) {
+			continue
+		}
+		if w == "40" && i+1 < len(words) && words[i+1] == "000" {
+			out["40000"] = true
+			i++
+			continue
+		}
+		out[w] = true
+	}
+	return out
+}
+
+func metacriticNormalizeToken(s string) string {
+	switch s {
+	case "i":
+		return "1"
+	case "ii":
+		return "2"
+	case "iii":
+		return "3"
+	case "iv":
+		return "4"
+	case "v":
+		return "5"
+	case "vi":
+		return "6"
+	default:
+		return s
+	}
+}
+
+func metacriticStopToken(s string) bool {
+	switch s {
+	case "the", "official", "game", "fia", "ea", "sports":
+		return true
+	default:
+		return false
+	}
+}
+
+func tokenSetsEqual(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	return tokenSetSubset(a, b)
+}
+
+func tokenSetSubset(a, b map[string]bool) bool {
+	for token := range a {
+		if !b[token] {
+			return false
+		}
+	}
+	return true
+}
+
+func onlyGenericExtras(a, b map[string]bool) bool {
+	for token := range a {
+		if !b[token] && !metacriticStopToken(token) {
+			return false
+		}
+	}
+	return true
 }
 
 func metacriticScoreFromJSONLD(raw []byte) (int, bool) {
