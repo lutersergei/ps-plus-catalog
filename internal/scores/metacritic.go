@@ -81,6 +81,17 @@ func metacriticSlugCandidates(titleEn string) []string {
 	return out
 }
 
+// MetacriticSlug возвращает первый slug-кандидат для прямой ссылки на страницу
+// игры. Порядок совпадает с MetacriticScores: сначала исходное название, потом
+// очищенный fallback.
+func MetacriticSlug(titleEn string) string {
+	candidates := metacriticSlugCandidates(titleEn)
+	if len(candidates) == 0 {
+		return ""
+	}
+	return candidates[0]
+}
+
 func metacriticScoresBySlug(ctx context.Context, c *http.Client, slug string) (MetacriticResult, bool, error) {
 	url := "https://www.metacritic.com/game/" + slug + "/"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

@@ -85,7 +85,7 @@ func (g GameView) MetacriticURL() string {
 	if t == "" {
 		t = g.Title
 	}
-	if slug := scores.Slugify(scores.CleanTitle(t)); slug != "" {
+	if slug := scores.MetacriticSlug(t); slug != "" {
 		return "https://www.metacritic.com/game/" + slug + "/"
 	}
 	return "https://www.metacritic.com/search/" + url.PathEscape(g.searchTerm()) + "/"

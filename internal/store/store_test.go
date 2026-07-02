@@ -415,6 +415,14 @@ func TestHLTBURLUsesDirectGamePageWhenKnown(t *testing.T) {
 	}
 }
 
+func TestMetacriticURLUsesRawSlugFirst(t *testing.T) {
+	g := GameView{TitleEn: "Hollow Knight Voidheart Edition"}
+	want := "https://www.metacritic.com/game/hollow-knight-voidheart-edition/"
+	if got := g.MetacriticURL(); got != want {
+		t.Fatalf("MetacriticURL=%q, ждали %q", got, want)
+	}
+}
+
 func TestGamesNeedingHLTBSkipsFreshScoredRowsWithoutURL(t *testing.T) {
 	db := newTestDB(t, 1)
 	if err := UpdateHLTB(db, "g1", sql.NullInt64{Int64: 189183, Valid: true}, sql.NullInt64{Int64: 79, Valid: true}, sql.NullInt64{}, sql.NullString{}); err != nil {
