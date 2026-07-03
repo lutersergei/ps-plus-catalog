@@ -281,17 +281,27 @@ func ResetMissingChecks(db *sql.DB) (mc, oc int64, err error) {
 	return mc, oc, nil
 }
 
+// openCriticPlayerWeightExpr returns the source weight for OpenCritic Player
+// Rating. With two other player sources available, 0.5 gives OpenCritic a 20%
+// share of the player average: w / (1 + 1 + w) = 0.20.
+const openCriticPlayerWeightExpr = `CASE
+  WHEN COALESCE(opencritic_player_score,0) <= 0 OR COALESCE(opencritic_player_count,0) < 20 THEN 0.0
+  WHEN COALESCE(opencritic_player_count,0) > 100 THEN 1.0
+  ELSE 0.5
+END`
+
 // averageExpr averages all available score sources. NULL and 0 are treated as
-// missing values because upstream APIs may use 0 as "no score".
+// missing values because upstream APIs may use 0 as "no score". OpenCritic
+// Player Rating is additionally weighted by its vote count.
 const averageExpr = `CASE
-  WHEN ((COALESCE(metacritic_score,0) > 0) + (COALESCE(metacritic_user_score,0) > 0) + (COALESCE(opencritic_score,0) > 0) + (COALESCE(opencritic_player_score,0) > 0) + (COALESCE(hltb_rating,0) > 0)) = 0 THEN NULL
+  WHEN ((COALESCE(metacritic_score,0) > 0) + (COALESCE(metacritic_user_score,0) > 0) + (COALESCE(opencritic_score,0) > 0) + (` + openCriticPlayerWeightExpr + `) + (COALESCE(hltb_rating,0) > 0)) = 0 THEN NULL
   ELSE ROUND(
     (CASE WHEN COALESCE(metacritic_score,0) > 0 THEN metacritic_score ELSE 0 END
      + CASE WHEN COALESCE(metacritic_user_score,0) > 0 THEN metacritic_user_score ELSE 0 END
      + CASE WHEN COALESCE(opencritic_score,0) > 0 THEN opencritic_score ELSE 0 END
-     + CASE WHEN COALESCE(opencritic_player_score,0) > 0 THEN opencritic_player_score ELSE 0 END
+     + COALESCE(opencritic_player_score,0) * (` + openCriticPlayerWeightExpr + `)
      + CASE WHEN COALESCE(hltb_rating,0) > 0 THEN hltb_rating ELSE 0 END) * 1.0
-    / ((COALESCE(metacritic_score,0) > 0) + (COALESCE(metacritic_user_score,0) > 0) + (COALESCE(opencritic_score,0) > 0) + (COALESCE(opencritic_player_score,0) > 0) + (COALESCE(hltb_rating,0) > 0)), 1)
+    / ((COALESCE(metacritic_score,0) > 0) + (COALESCE(metacritic_user_score,0) > 0) + (COALESCE(opencritic_score,0) > 0) + (` + openCriticPlayerWeightExpr + `) + (COALESCE(hltb_rating,0) > 0)), 1)
 END`
 
 const criticAverageExpr = `CASE
@@ -303,12 +313,12 @@ const criticAverageExpr = `CASE
 END`
 
 const playerAverageExpr = `CASE
-  WHEN ((COALESCE(metacritic_user_score,0) > 0) + (COALESCE(opencritic_player_score,0) > 0) + (COALESCE(hltb_rating,0) > 0)) = 0 THEN NULL
+  WHEN ((COALESCE(metacritic_user_score,0) > 0) + (` + openCriticPlayerWeightExpr + `) + (COALESCE(hltb_rating,0) > 0)) = 0 THEN NULL
   ELSE ROUND(
     (CASE WHEN COALESCE(metacritic_user_score,0) > 0 THEN metacritic_user_score ELSE 0 END
-     + CASE WHEN COALESCE(opencritic_player_score,0) > 0 THEN opencritic_player_score ELSE 0 END
+     + COALESCE(opencritic_player_score,0) * (` + openCriticPlayerWeightExpr + `)
      + CASE WHEN COALESCE(hltb_rating,0) > 0 THEN hltb_rating ELSE 0 END) * 1.0
-    / ((COALESCE(metacritic_user_score,0) > 0) + (COALESCE(opencritic_player_score,0) > 0) + (COALESCE(hltb_rating,0) > 0)), 1)
+    / ((COALESCE(metacritic_user_score,0) > 0) + (` + openCriticPlayerWeightExpr + `) + (COALESCE(hltb_rating,0) > 0)), 1)
 END`
 
 // recomputeAverages пересчитывает все сохранённые сводные оценки строки.

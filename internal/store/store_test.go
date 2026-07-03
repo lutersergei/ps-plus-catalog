@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"math"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -248,8 +249,8 @@ FROM games WHERE id = ?`, "g1").Scan(
 	if !ocPlayerCount.Valid || ocPlayerCount.Int64 != 57 {
 		t.Fatalf("opencritic_player_count=%v, ждали 57", ocPlayerCount)
 	}
-	if !avg.Valid || avg.Float64 != 76 {
-		t.Fatalf("average_score=%v, ждали 76 по пяти источникам", avg)
+	if !avg.Valid || avg.Float64 != 76.7 {
+		t.Fatalf("average_score=%v, ждали 76.7 с пониженным весом OC player", avg)
 	}
 	if !criticAvg.Valid || criticAvg.Float64 != 85 {
 		t.Fatalf("critic_average_score=%v, ждали 85", criticAvg)
@@ -307,6 +308,90 @@ FROM games WHERE id = ?`, "g1").Scan(&avg, &criticAvg, &playerAvg); err != nil {
 	}
 	if !playerAvg.Valid || playerAvg.Float64 != 75 {
 		t.Fatalf("player_average_score=%v, ждали 75", playerAvg)
+	}
+}
+
+func TestRecomputeAveragesWeightsOpenCriticPlayerByVoteCount(t *testing.T) {
+	tests := []struct {
+		name       string
+		ocPlayers  int64
+		wantAvg    float64
+		wantPlayer float64
+	}{
+		{
+			name:       "less than 20 OpenCritic player votes are ignored",
+			ocPlayers:  4,
+			wantAvg:    72.0,
+			wantPlayer: 65.0,
+		},
+		{
+			name:       "20 to 100 OpenCritic player votes use reduced weight",
+			ocPlayers:  20,
+			wantAvg:    65.1,
+			wantPlayer: 54.0,
+		},
+		{
+			name:       "more than 100 OpenCritic player votes are equal weight",
+			ocPlayers:  101,
+			wantAvg:    59.6,
+			wantPlayer: 46.7,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := newTestDB(t, 1)
+			if err := UpdateMetacriticScores(
+				db,
+				"g1",
+				sql.NullInt64{Int64: 80, Valid: true},
+				sql.NullInt64{Int64: 62, Valid: true},
+				sql.NullInt64{Int64: 32, Valid: true},
+				sql.NullString{},
+			); err != nil {
+				t.Fatalf("update metacritic: %v", err)
+			}
+			if err := UpdateOpenCriticScores(
+				db,
+				"g1",
+				sql.NullInt64{Int64: 78, Valid: true},
+				sql.NullString{},
+				sql.NullInt64{},
+				sql.NullInt64{Int64: 10, Valid: true},
+				sql.NullInt64{Int64: tt.ocPlayers, Valid: true},
+			); err != nil {
+				t.Fatalf("update opencritic: %v", err)
+			}
+			if err := UpdateHLTB(
+				db,
+				"g1",
+				sql.NullInt64{},
+				sql.NullInt64{Int64: 68, Valid: true},
+				sql.NullInt64{},
+				sql.NullString{},
+			); err != nil {
+				t.Fatalf("update hltb: %v", err)
+			}
+
+			var avg, playerAvg sql.NullFloat64
+			if err := db.QueryRow(`
+SELECT average_score, player_average_score
+FROM games WHERE id = ?`, "g1").Scan(&avg, &playerAvg); err != nil {
+				t.Fatalf("select: %v", err)
+			}
+			assertFloat(t, "average_score", avg, tt.wantAvg)
+			assertFloat(t, "player_average_score", playerAvg, tt.wantPlayer)
+		})
+	}
+}
+
+func assertFloat(t *testing.T, name string, got sql.NullFloat64, want float64) {
+	t.Helper()
+	if !got.Valid {
+		t.Fatalf("%s=NULL, ждали %.1f", name, want)
+	}
+	if math.Abs(got.Float64-want) > 0.05 {
+		t.Fatalf("%s=%.1f, ждали %.1f", name, got.Float64, want)
 	}
 }
 
