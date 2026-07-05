@@ -67,6 +67,13 @@ func (g GameView) HLTBHours() float64 {
 	return float64(g.HLTBMainSec.Int64) / 3600
 }
 
+// RuStoreURL — ссылка на страницу игры в русском PS Store. Каталог собирается
+// из турецкого региона, но пользователю удобнее русская страница магазина —
+// подменяем локаль только при отображении, данные остаются каноничными.
+func (g GameView) RuStoreURL() string {
+	return strings.Replace(g.StoreURL, "/tr-tr/", "/ru-ru/", 1)
+}
+
 // OCPlayerWeight — вес пользовательской оценки OpenCritic в среднем игроков.
 // Зеркалирует SQL-выражение openCriticPlayerWeightExpr (games.go): без оценки
 // или при <20 голосов — 0, при >100 голосов — 1, иначе 0.5.
