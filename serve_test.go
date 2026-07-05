@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"database/sql"
+	"fmt"
 	"html/template"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,6 +12,35 @@ import (
 
 	"github.com/lutersergei/ps-plus-catalog/internal/store"
 )
+
+func TestHandleIndexOffsetParamOverridesPage(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	// 30 игр: G01..G30 — при pageSize 24 offset=24 начинает с G25.
+	for i := 1; i <= 30; i++ {
+		id := fmt.Sprintf("g%02d", i)
+		title := fmt.Sprintf("G%02d", i)
+		if err := store.UpsertGame(db, store.GameRow{ID: id, Title: title}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+
+	tmpl := template.Must(template.New("test").Parse(
+		`first={{(index .Result.Games 0).Title}} page={{.Result.Page}}`))
+	req := httptest.NewRequest("GET", "/?offset=24&page=1&sort=title&order=asc", nil)
+	rec := httptest.NewRecorder()
+
+	handleIndex(rec, req, db, tmpl)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "first=G25") || !strings.Contains(body, "page=2") {
+		t.Fatalf("body=%q, ждали first=G25 page=2 (offset приоритетнее page)", body)
+	}
+}
 
 func TestHandleIndexParsesCriticAndPlayerFilters(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
