@@ -558,10 +558,10 @@ a.more { text-decoration: none; }
 {{if .Result.Games}}
 <div class="catalog">
   <div class="grid" data-next="{{.NextOffset}}" data-psize="{{.Result.PageSize}}">{{template "cards" .}}</div>
-  {{if .Letters}}
+  {{if .Buckets}}
   <nav class="alpha" aria-label="Быстрый переход по алфавиту">
     {{$bq := .BaseQuery}}
-    {{range .Letters}}<a class="achip" data-offset="{{.Offset}}" href="?{{$bq}}&offset={{.Offset}}">{{.Letter}}</a>{{end}}
+    {{range .Buckets}}<a class="achip" data-offset="{{.Offset}}" href="?{{$bq}}&offset={{.Offset}}">{{.Label}}</a>{{end}}
   </nav>
   {{end}}
 </div>

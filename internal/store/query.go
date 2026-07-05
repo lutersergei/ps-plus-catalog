@@ -300,18 +300,18 @@ func buildListWhere(p ListParams) (string, []any) {
 	return "WHERE " + strings.Join(where, " AND "), args
 }
 
-// LetterBucket — бакет буквенного индекса: буква и смещение первой строки
+// IndexBucket — бакет буквенного индекса: буква и смещение первой строки
 // с этой буквы в текущей выборке.
-type LetterBucket struct {
-	Letter string
+type IndexBucket struct {
+	Label  string
 	Offset int
 }
 
-// TitleLetterBuckets считает бакеты первого символа названия для буквенного
+// TitleIndexBuckets считает бакеты первого символа названия для буквенного
 // индекса. Не-латинские первые символы попадают в бакет "#", который при
 // сортировке по возрастанию идёт первым (как и в ORDER BY: цифры/символы
 // раньше букв), при убывании — последним. Пустые бакеты опускаются.
-func TitleLetterBuckets(db *sql.DB, p ListParams) ([]LetterBucket, error) {
+func TitleIndexBuckets(db *sql.DB, p ListParams) ([]IndexBucket, error) {
 	NormalizeParams(&p)
 	whereSQL, args := buildListWhere(p)
 	rows, err := db.Query(
@@ -347,14 +347,14 @@ func TitleLetterBuckets(db *sql.DB, p ListParams) ([]LetterBucket, error) {
 		}
 	}
 
-	var buckets []LetterBucket
+	var buckets []IndexBucket
 	offset := 0
 	for _, l := range order {
 		n := counts[l]
 		if n == 0 {
 			continue
 		}
-		buckets = append(buckets, LetterBucket{Letter: l, Offset: offset})
+		buckets = append(buckets, IndexBucket{Label: l, Offset: offset})
 		offset += n
 	}
 	return buckets, nil

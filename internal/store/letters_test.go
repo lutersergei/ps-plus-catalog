@@ -41,7 +41,7 @@ func TestListGamesTitleSortIsCaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestTitleLetterBucketsCumulativeOffsets(t *testing.T) {
+func TestTitleIndexBucketsCumulativeOffsets(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -59,11 +59,11 @@ func TestTitleLetterBucketsCumulativeOffsets(t *testing.T) {
 		}
 	}
 
-	got, err := TitleLetterBuckets(db, ListParams{Sort: "title", Order: "asc"})
+	got, err := TitleIndexBuckets(db, ListParams{Sort: "title", Order: "asc"})
 	if err != nil {
 		t.Fatalf("buckets: %v", err)
 	}
-	want := []LetterBucket{{"#", 0}, {"A", 1}, {"B", 3}}
+	want := []IndexBucket{{"#", 0}, {"A", 1}, {"B", 3}}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v, ждали %+v", got, want)
 	}
@@ -74,7 +74,7 @@ func TestTitleLetterBucketsCumulativeOffsets(t *testing.T) {
 	}
 }
 
-func TestTitleLetterBucketsDescReversesOrder(t *testing.T) {
+func TestTitleIndexBucketsDescReversesOrder(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -90,11 +90,11 @@ func TestTitleLetterBucketsDescReversesOrder(t *testing.T) {
 		}
 	}
 
-	got, err := TitleLetterBuckets(db, ListParams{Sort: "title", Order: "desc"})
+	got, err := TitleIndexBuckets(db, ListParams{Sort: "title", Order: "desc"})
 	if err != nil {
 		t.Fatalf("buckets: %v", err)
 	}
-	want := []LetterBucket{{"B", 0}, {"A", 1}}
+	want := []IndexBucket{{"B", 0}, {"A", 1}}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v, ждали %+v", got, want)
 	}
@@ -105,7 +105,7 @@ func TestTitleLetterBucketsDescReversesOrder(t *testing.T) {
 	}
 }
 
-func TestTitleLetterBucketsRespectsFilters(t *testing.T) {
+func TestTitleIndexBucketsRespectsFilters(t *testing.T) {
 	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -121,11 +121,11 @@ func TestTitleLetterBucketsRespectsFilters(t *testing.T) {
 		}
 	}
 
-	got, err := TitleLetterBuckets(db, ListParams{Sort: "title", Order: "asc", YearFrom: 2015})
+	got, err := TitleIndexBuckets(db, ListParams{Sort: "title", Order: "asc", YearFrom: 2015})
 	if err != nil {
 		t.Fatalf("buckets: %v", err)
 	}
-	want := []LetterBucket{{"A", 0}}
+	want := []IndexBucket{{"A", 0}}
 	if len(got) != 1 || got[0] != want[0] {
 		t.Fatalf("got %+v, ждали %+v (фильтр по году должен применяться)", got, want)
 	}

@@ -242,7 +242,7 @@ func TestIndexTemplateRendersLetterIndexAndMoreLink(t *testing.T) {
 		},
 		Params:     store.ListParams{Sort: "title"},
 		BaseQuery:  template.URL("sort=title&order=asc"),
-		Letters:    []store.LetterBucket{{Letter: "#", Offset: 0}, {Letter: "A", Offset: 3}},
+		Buckets:    []store.IndexBucket{{Label: "#", Offset: 0}, {Label: "A", Offset: 3}},
 		NextOffset: 24,
 		HasNext:    true,
 	}
@@ -296,18 +296,18 @@ func TestHandleIndexComputesLettersOnlyForTitleSort(t *testing.T) {
 		t.Fatalf("upsert: %v", err)
 	}
 
-	tmpl := template.Must(template.New("test").Parse(`letters={{len .Letters}}`))
+	tmpl := template.Must(template.New("test").Parse(`buckets={{len .Buckets}}`))
 
 	rec := httptest.NewRecorder()
 	handleIndex(rec, httptest.NewRequest("GET", "/?sort=title", nil), db, tmpl)
-	if !strings.Contains(rec.Body.String(), "letters=1") {
-		t.Fatalf("body=%q, ждали letters=1 при sort=title", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "buckets=1") {
+		t.Fatalf("body=%q, ждали buckets=1 при sort=title", rec.Body.String())
 	}
 
 	rec = httptest.NewRecorder()
 	handleIndex(rec, httptest.NewRequest("GET", "/?sort=player", nil), db, tmpl)
-	if !strings.Contains(rec.Body.String(), "letters=0") {
-		t.Fatalf("body=%q, ждали letters=0 при sort=player", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), "buckets=0") {
+		t.Fatalf("body=%q, ждали buckets=0 при sort=player", rec.Body.String())
 	}
 }
 
