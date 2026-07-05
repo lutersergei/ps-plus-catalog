@@ -24,6 +24,83 @@ var indexHTML string
 
 const pageSize = 24
 
+// Шкала полосы времени прохождения на карточке (0–60 ч) и максимум слайдера
+// фильтра по времени. Значение слайдера на правом краю означает «без верхней
+// границы» — см. normalizeSliderBounds.
+const (
+	hltbScaleHours     = 60
+	hltbSliderMaxHours = 80
+)
+
+// newIndexTemplate парсит встроенный шаблон страницы со всеми функциями,
+// которые он использует. Общая точка для сервера и тестов.
+func newIndexTemplate() (*template.Template, error) {
+	return template.New("index").Funcs(template.FuncMap{
+		"add":        func(a, b int) int { return a + b },
+		"scoreClass": scoreClass,
+		"fmtCount":   fmtCount,
+		"hltbPct":    hltbPct,
+		"hltbOver":   hltbOver,
+	}).Parse(indexHTML)
+}
+
+// scoreClass — CSS-класс цвета оценки: зелёный от 75, охра от 50, ниже — красный.
+func scoreClass(v float64) string {
+	switch {
+	case v >= 75:
+		return "good"
+	case v >= 50:
+		return "mid"
+	default:
+		return "bad"
+	}
+}
+
+// fmtCount форматирует число голосов компактно: до 999 как есть, дальше в
+// тысячах с одним знаком («2,3к»), без хвоста «,0» («3к»).
+func fmtCount(n int64) string {
+	if n < 1000 {
+		return strconv.FormatInt(n, 10)
+	}
+	tenths := (n + 50) / 100
+	if tenths%10 == 0 {
+		return strconv.FormatInt(tenths/10, 10) + "к"
+	}
+	return strconv.FormatInt(tenths/10, 10) + "," + strconv.FormatInt(tenths%10, 10) + "к"
+}
+
+// hltbPct — заполнение полосы времени в процентах шкалы 0–60 ч (клампится к 100).
+func hltbPct(hours float64) int {
+	pct := int(hours/hltbScaleHours*100 + 0.5)
+	if pct > 100 {
+		return 100
+	}
+	if pct < 0 {
+		return 0
+	}
+	return pct
+}
+
+// hltbOver сообщает, что игра длиннее шкалы полосы времени.
+func hltbOver(hours float64) bool {
+	return hours > hltbScaleHours
+}
+
+// normalizeSliderBounds трактует правый край range-слайдеров как «фильтр не
+// задан»: иначе critic_to=100 из всегда отправляемого слайдера отсекал бы игры
+// без оценок (NULL не проходит сравнение <=).
+func normalizeSliderBounds(p *store.ListParams) {
+	if p.CriticTo >= 100 {
+		p.CriticTo = 0
+	}
+	if p.PlayerTo >= 100 {
+		p.PlayerTo = 0
+	}
+	if p.HLTBToHours >= hltbSliderMaxHours {
+		p.HLTBToHours = 0
+	}
+}
+
 type pageData struct {
 	Result    store.ListResult
 	Years     []int
@@ -51,9 +128,7 @@ func runServe(args []string) error {
 	}
 	defer db.Close()
 
-	tmpl, err := template.New("index").Funcs(template.FuncMap{
-		"add": func(a, b int) int { return a + b },
-	}).Parse(indexHTML)
+	tmpl, err := newIndexTemplate()
 	if err != nil {
 		return err
 	}
@@ -148,6 +223,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 	// отображаемые значения и query в ссылках совпадали с тем, что уйдёт в SQL
 	// (обрезка длинного поиска, лишних жанров, перевёрнутых диапазонов). Верхний
 	// клампинг номера страницы делает ListGames; форма берёт его из result.Page.
+	normalizeSliderBounds(&p)
 	store.NormalizeParams(&p)
 
 	result, err := store.ListGames(db, p)

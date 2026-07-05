@@ -5,102 +5,374 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PS Plus Extra (Турция) — каталог с оценками</title>
 <style>
-  :root { --bg:#0e1320; --card:#1a2236; --accent:#2f6fed; --text:#e8edf7; --muted:#9aa6bf; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 -apple-system,Segoe UI,Roboto,sans-serif; }
-  header { padding:20px 24px; border-bottom:1px solid #232c44; }
-  h1 { margin:0; font-size:20px; }
-  header .sub { color:var(--muted); font-size:13px; margin-top:4px; }
-  form.filters { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; padding:16px 24px; background:#121a2c; }
-  .field { display:flex; flex-direction:column; gap:4px; }
-  .field label { font-size:12px; color:var(--muted); }
-  select, input[type=number], input[type=text], button { background:var(--card); color:var(--text); border:1px solid #2c3654; border-radius:8px; padding:8px 10px; font-size:14px; }
-  input[type=number] { width:80px; }
-  input.search { width:200px; }
-  input::placeholder { color:var(--muted); }
-  button { background:var(--accent); border-color:var(--accent); cursor:pointer; }
-  a.reset { color:var(--muted); font-size:13px; align-self:flex-end; padding-bottom:9px; }
-  /* Жанр: компактный выпадающий мультивыбор на <details> */
-  .genre-dd { position:relative; }
-  .genre-dd > summary { list-style:none; cursor:pointer; background:var(--card); border:1px solid #2c3654; border-radius:8px; padding:8px 28px 8px 10px; font-size:14px; min-width:150px; position:relative; white-space:nowrap; }
-  .genre-dd > summary::-webkit-details-marker { display:none; }
-  .genre-dd > summary::after { content:"▾"; position:absolute; right:10px; top:50%; transform:translateY(-50%); color:var(--muted); }
-  .genre-dd[open] > summary::after { content:"▴"; }
-  .genre-panel { position:absolute; z-index:20; margin-top:4px; max-height:240px; overflow:auto; background:#1a2236; border:1px solid #2c3654; border-radius:8px; padding:6px; min-width:200px; box-shadow:0 8px 24px rgba(0,0,0,.45); }
-  .genre-opt { display:flex; align-items:center; gap:8px; padding:5px 6px; font-size:13px; color:var(--text); white-space:nowrap; cursor:pointer; border-radius:6px; }
-  .genre-opt:hover { background:#212a42; }
-  .field-row { display:flex; gap:6px; align-items:center; }
-  .field-row span { color:var(--muted); font-size:12px; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; padding:24px; }
-  .card { background:var(--card); border:1px solid #232c44; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; }
-  .card img { width:100%; aspect-ratio:1/1; object-fit:cover; background:#0a0f1a; }
-  .card .body { padding:12px; display:flex; flex-direction:column; gap:8px; flex:1; }
-  .card .title { font-weight:600; font-size:14px; }
-  .card .title a { color:var(--text); text-decoration:none; }
-  .card .meta { color:var(--muted); font-size:12px; }
-  .genres { display:flex; flex-wrap:wrap; gap:4px; }
-  .genres span { background:#212a42; color:var(--muted); border-radius:6px; padding:2px 6px; font-size:11px; }
-  .scores { display:flex; gap:8px; margin-top:auto; }
-  .score { flex:1; text-align:center; border-radius:8px; padding:6px 4px; background:#0f1626; }
-  .score .v { font-weight:700; font-size:16px; }
-  .score .l { font-size:10px; color:var(--muted); text-transform:uppercase; }
-  .score.na .v { color:#54607c; }
-  a.score { display:block; text-decoration:none; color:inherit; transition:background .15s, box-shadow .15s; }
-  a.score:hover { background:#243150; box-shadow:0 0 0 1px var(--accent) inset; }
-  .score-details { display:flex; flex-direction:column; gap:5px; border-radius:8px; padding:8px; background:#0f1626; }
-  .score-line { display:grid; grid-template-columns:82px 1fr auto; gap:8px; align-items:center; }
-  a.score-line { color:inherit; text-decoration:none; }
-  a.score-line:hover .name { color:var(--text); }
-  .score-line .name { color:var(--muted); font-size:10px; text-transform:uppercase; }
-  .score-line .bar { height:7px; border-radius:999px; background:#25314c; overflow:hidden; }
-  .score-line .bar span { display:block; height:100%; border-radius:999px; background:var(--accent); }
-  .score-line .num { min-width:18px; text-align:right; font-size:12px; font-weight:700; }
-  .score-counts { color:var(--muted); font-size:10px; }
-  .pager { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; padding:8px 24px 40px; }
-  .pager a, .pager span { padding:7px 11px; border-radius:8px; background:var(--card); color:var(--text); text-decoration:none; border:1px solid #2c3654; font-size:14px; }
-  .pager .cur { background:var(--accent); border-color:var(--accent); }
-  .pager .disabled { opacity:.4; pointer-events:none; }
-  .empty { padding:60px 24px; text-align:center; color:var(--muted); }
-  .lang-checks { display:flex; flex-direction:column; gap:6px; padding-top:4px; }
-  .lang-check { display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; }
-  input[type=checkbox] { width:14px; height:14px; accent-color:var(--accent); cursor:pointer; }
-  .lang-badges { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; margin-top:2px; }
-  .lang-badge { display:flex; align-items:center; justify-content:center; height:24px; padding:0 6px; font-size:10px; font-weight:700; line-height:1; border-radius:4px; letter-spacing:.3px; text-align:center; }
-  .lang-badge.sub   { background:#102d2c; color:#5fd3c8; border:1px solid #21615d; }
-  .lang-badge.voice { background:#251b3d; color:#b69cff; border:1px solid #55417f; }
+:root {
+  --paper: #EFF1EE;
+  --card: #FBFCFA;
+  --ink: #131A26;
+  --muted: #66707F;
+  --faint: #98A1AD;
+  --cobalt: #2547D0;
+  --line: #D7DBD4;
+  --line-soft: #E4E7E2;
+  --good: #1E7F4C;
+  --mid: #A67C0F;
+  --bad: #BE4436;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, "Segoe UI", system-ui, Roboto, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #14181D; --card: #1C2127; --ink: #E9EDF0; --muted: #8B96A3;
+    --faint: #5D6873; --cobalt: #8DA2FF; --line: #2A3138; --line-soft: #22282E;
+    --good: #4CBB81; --mid: #D3A83B; --bad: #E0705F;
+  }
+}
+:root[data-theme="light"] {
+  --paper: #EFF1EE; --card: #FBFCFA; --ink: #131A26; --muted: #66707F;
+  --faint: #98A1AD; --cobalt: #2547D0; --line: #D7DBD4; --line-soft: #E4E7E2;
+  --good: #1E7F4C; --mid: #A67C0F; --bad: #BE4436;
+}
+:root[data-theme="dark"] {
+  --paper: #14181D; --card: #1C2127; --ink: #E9EDF0; --muted: #8B96A3;
+  --faint: #5D6873; --cobalt: #8DA2FF; --line: #2A3138; --line-soft: #22282E;
+  --good: #4CBB81; --mid: #D3A83B; --bad: #E0705F;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.45 var(--sans); }
+a { color: var(--cobalt); }
+:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; border-radius: 4px; }
+
+.wrap { max-width: 1320px; margin: 0 auto; padding: 0 24px; }
+
+/* ---------- Шапка: одна строка ---------- */
+.masthead { border-bottom: 1px solid var(--line); }
+.masthead .bar { display: flex; align-items: center; gap: 14px; padding: 13px 0; }
+.wordmark {
+  font: 700 13px/1 var(--mono);
+  letter-spacing: .16em; text-transform: uppercase;
+  color: var(--cobalt);
+}
+.count { color: var(--muted); font-size: 12.5px; }
+.count b { color: var(--ink); font-family: var(--mono); font-weight: 700; }
+.spacer { flex: 1; }
+
+/* Справка-тултип */
+.help { position: relative; }
+.help > summary {
+  list-style: none; cursor: pointer;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--card); color: var(--muted);
+  font: 700 13px/1 var(--mono);
+}
+.help > summary::-webkit-details-marker { display: none; }
+.help[open] > summary, .help > summary:hover { color: var(--cobalt); border-color: var(--cobalt); }
+.help .panel {
+  position: absolute; right: 0; top: 34px; z-index: 30;
+  width: 330px;
+  background: var(--card);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.18);
+  display: flex; flex-direction: column; gap: 9px;
+  font-size: 12px; line-height: 1.5; color: var(--muted);
+}
+.help .panel .g { font-family: var(--mono); color: var(--ink); }
+
+/* Переключатель темы */
+.tbtn {
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--card); color: var(--muted);
+  font-size: 13px; line-height: 1;
+  cursor: pointer; padding: 0;
+}
+.tbtn:hover { color: var(--cobalt); border-color: var(--cobalt); }
+
+/* ---------- Фильтры ---------- */
+.filters {
+  display: flex; flex-wrap: wrap; gap: 16px 22px;
+  align-items: flex-end;
+  padding: 18px 0 20px;
+  border-bottom: 1px solid var(--line);
+}
+.f { display: flex; flex-direction: column; gap: 6px; }
+.f > label, .f > .flabel {
+  font: 600 10px/1 var(--mono);
+  letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted);
+}
+.f .flabel .val { color: var(--cobalt); letter-spacing: 0; }
+.f input[type=text], .f input[type=number], .f select, .genre-dd summary {
+  background: var(--card); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 7px 9px; font: 13px var(--sans);
+}
+.f input[type=number] { width: 78px; font-family: var(--mono); }
+.f input[type=text] { width: 180px; }
+.f input::placeholder { color: var(--faint); }
+.pair { display: flex; align-items: center; gap: 5px; }
+.pair .dash { color: var(--faint); }
+.genre-dd { position: relative; }
+.genre-dd summary { list-style: none; cursor: pointer; min-width: 124px; display: inline-block; }
+.genre-dd summary::-webkit-details-marker { display: none; }
+.genre-dd summary::after { content: " ▾"; color: var(--muted); }
+.genre-panel {
+  position: absolute; z-index: 20; margin-top: 4px;
+  max-height: 260px; overflow: auto;
+  background: var(--card);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 6px; min-width: 210px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.18);
+}
+.genre-opt {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 6px; font-size: 13px;
+  white-space: nowrap; cursor: pointer; border-radius: 6px;
+}
+.genre-opt:hover { background: var(--line-soft); }
+.checks { display: flex; gap: 14px; padding: 8px 0; }
+.checks label { display: flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
+input[type=checkbox] { accent-color: var(--cobalt); width: 14px; height: 14px; }
+.btn {
+  background: var(--cobalt); color: var(--paper);
+  border: none; border-radius: 7px;
+  padding: 8px 18px; font: 600 13px var(--sans); cursor: pointer;
+}
+a.reset { font-size: 13px; color: var(--muted); padding-bottom: 8px; }
+
+/* Двухползунковый range */
+.range { position: relative; width: 168px; height: 26px; }
+.range .track {
+  position: absolute; left: 0; right: 0; top: 11px;
+  height: 4px; border-radius: 99px;
+  background: var(--line);
+}
+.range .fill { position: absolute; top: 0; bottom: 0; border-radius: 99px; background: var(--cobalt); }
+.range input[type=range] {
+  position: absolute; left: 0; top: 2px;
+  width: 100%; margin: 0;
+  -webkit-appearance: none; appearance: none;
+  background: none; pointer-events: none;
+  height: 22px;
+}
+.range input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 2px solid var(--cobalt);
+  cursor: grab;
+  box-shadow: 0 1px 3px rgba(0,0,0,.18);
+}
+.range input[type=range]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 2px solid var(--cobalt);
+  cursor: grab;
+}
+
+/* ---------- Сетка карточек ---------- */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 16px;
+  padding: 22px 0;
+}
+@media (max-width: 1200px) { .grid { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); } }
+
+.gcard {
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  transition: box-shadow .15s, border-color .15s;
+}
+.gcard:hover { border-color: var(--line); box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+
+.cover { position: relative; aspect-ratio: 1/1; background: var(--line-soft); }
+.cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.ru-flags { position: absolute; top: 7px; left: 7px; display: flex; gap: 4px; }
+.ru-flags span {
+  font: 700 8.5px/1 var(--mono); letter-spacing: .06em;
+  color: #fff; background: rgba(10,16,30,.62);
+  border-radius: 4px; padding: 3px 5px;
+  backdrop-filter: blur(2px);
+}
+
+.gbody { padding: 10px 10px 10px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.gtitle {
+  font-size: 13px; font-weight: 700; line-height: 1.25; letter-spacing: -.01em;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  min-height: 2.5em;
+}
+.gtitle a { color: var(--ink); text-decoration: none; }
+.gtitle a:hover { color: var(--cobalt); }
+.gmeta { color: var(--muted); font-size: 11px; margin-top: -4px; }
+
+/* Пара вердиктов */
+.verdict { display: flex; gap: 6px; }
+.chip {
+  position: relative; flex: 1;
+  border-radius: 8px; padding: 6px 4px 5px;
+  text-align: center;
+  border: 1px solid transparent;
+}
+.chip .n { font: 800 18px/1 var(--mono); font-variant-numeric: tabular-nums; }
+.chip .l { font: 600 8px/1 var(--mono); letter-spacing: .09em; text-transform: uppercase; margin-top: 3px; color: var(--muted); }
+.chip.good { background: color-mix(in oklab, var(--good) 13%, var(--card)); color: var(--good); }
+.chip.mid  { background: color-mix(in oklab, var(--mid) 14%, var(--card));  color: var(--mid); }
+.chip.bad  { background: color-mix(in oklab, var(--bad) 13%, var(--card));  color: var(--bad); }
+.chip.na   { border-color: var(--line); color: var(--faint); background: transparent; }
+.chip .w {
+  position: absolute; top: -6px; right: -3px;
+  font: 11px var(--mono); color: var(--muted);
+  background: var(--card); border-radius: 50%; line-height: 1;
+}
+
+/* Источники: группа критиков | группа игроков */
+.sources { display: grid; grid-template-columns: 2fr 3fr; gap: 0; }
+.sg { min-width: 0; }
+.sg-p { border-left: 1px solid var(--line-soft); padding-left: 7px; margin-left: 7px; }
+.scap {
+  font: 600 8px/1 var(--mono);
+  letter-spacing: .09em; text-transform: uppercase;
+  color: var(--faint);
+  text-align: center;
+  margin-bottom: 4px;
+}
+.cells { display: grid; gap: 2px; }
+.sg-c .cells { grid-template-columns: repeat(2, 1fr); }
+.sg-p .cells { grid-template-columns: repeat(3, 1fr); }
+.src { text-align: center; min-width: 0; }
+.src .sl { font: 600 8px/1.2 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--faint); }
+.src .sv { font: 700 11.5px/1.4 var(--mono); font-variant-numeric: tabular-nums; }
+.src .sv a { color: var(--ink); text-decoration: none; border-bottom: 1px dotted var(--faint); }
+.src .sv a:hover { color: var(--cobalt); border-bottom-color: var(--cobalt); }
+.src .na { color: var(--faint); font-weight: 400; }
+.src .sv.half { opacity: .5; }
+.src .sc { font: 8.5px/1.2 var(--mono); color: var(--faint); margin-top: 1px; white-space: nowrap; }
+
+/* Жанровые теги — внизу, переносятся на любое число строк */
+.tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; padding-top: 2px; }
+.tags span {
+  font-size: 10.5px;
+  color: var(--muted);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+/* Время — отдельная полоса внизу карточки. Шкала 0–60 ч, отметки 15/30/45 */
+.gtime {
+  border-top: 1px solid var(--line-soft);
+  padding: 8px 10px 9px;
+  display: flex; align-items: center; gap: 8px;
+}
+.gtime .h {
+  font: 800 13px/1 var(--mono); font-variant-numeric: tabular-nums;
+  white-space: nowrap; color: var(--ink); text-decoration: none;
+}
+a.h:hover { color: var(--cobalt); }
+.gtime .h small { font-weight: 600; color: var(--muted); }
+.gtime .h .na { color: var(--faint); font-weight: 400; }
+.ruler {
+  flex: 1; height: 4px; border-radius: 99px;
+  background:
+    linear-gradient(var(--line), var(--line)) 25% 0 / 1px 100% no-repeat,
+    linear-gradient(var(--line), var(--line)) 50% 0 / 1px 100% no-repeat,
+    linear-gradient(var(--line), var(--line)) 75% 0 / 1px 100% no-repeat,
+    var(--line-soft);
+  overflow: hidden;
+}
+.ruler i {
+  display: block; height: 100%;
+  background: var(--cobalt); border-radius: 99px;
+  transform-origin: left;
+  animation: fill .5s ease-out;
+}
+@keyframes fill { from { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .ruler i { animation: none; } }
+.omark { font-size: 9px; color: var(--cobalt); margin-left: -4px; }
+
+/* ---------- Пагинация ---------- */
+.pager {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  justify-content: center; align-items: center;
+  padding: 14px 0;
+  font-family: var(--mono); font-size: 13px;
+}
+.pager a, .pager span {
+  min-width: 34px; text-align: center;
+  padding: 7px 9px;
+  border: 1px solid var(--line); border-radius: 7px;
+  background: var(--card); color: var(--ink);
+  text-decoration: none;
+}
+.pager .cur { background: var(--cobalt); border-color: var(--cobalt); color: var(--paper); }
+.pager .dis { opacity: .4; }
+.pager .gap { border: none; background: none; color: var(--faint); }
+.pcount { text-align: center; color: var(--muted); font-size: 12px; padding-bottom: 50px; }
+.pcount b { font-family: var(--mono); color: var(--ink); }
+
+/* Пустое состояние */
+.empty {
+  margin: 22px 0 50px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  padding: 46px 24px;
+  text-align: center;
+}
+.empty .big { font-size: 17px; font-weight: 700; }
+.empty p { color: var(--muted); margin: 8px auto 14px; max-width: 46ch; }
 </style>
 </head>
 <body>
-<header>
-  <h1>PS Plus Extra (Турция) — каталог с оценками</h1>
-  <div class="sub">Всего игр по фильтру: {{.Result.Total}} · страница {{.Result.Page}} из {{.Result.TotalPages}}</div>
+
+<header class="masthead">
+  <div class="wrap bar">
+    <span class="wordmark">PS Plus Extra · Турция</span>
+    <span class="count"><b>{{.Result.Total}}</b> игр</span>
+    <span class="spacer"></span>
+    <details class="help">
+      <summary title="Как считаются оценки" aria-label="Как считаются оценки">?</summary>
+      <div class="panel">
+        <div><span class="g">Критики</span> — среднее оценок Metacritic и OpenCritic. <span class="g">Игроки</span> — среднее оценок игроков Metacritic, OpenCritic и рейтинга HowLongToBeat.</div>
+        <div><span class="g">●</span> голоса игроков OpenCritic учтены полностью (&gt;100 оценок) · <span class="g">◐</span> с весом 0.5 (20–100) · <span class="g">○</span> не учтены (&lt;20). В источниках оценка OC с весом 0.5 показана полупрозрачной, не учтённая — «—» с числом голосов.</div>
+        <div>Полоса времени — шкала <span class="g">0–60 ч</span> (Main + Sides), отметки 15/30/45; <span class="g">▸</span> — дольше 60 ч.</div>
+      </div>
+    </details>
+    <button class="tbtn" id="themeToggle" type="button" aria-label="Переключить тему">☾</button>
+  </div>
 </header>
 
+<div class="wrap">
 <form class="filters" method="get" action="">
-  <div class="field">
-    <label>Поиск по названию</label>
-    <input type="text" name="q" value="{{.Params.Search}}" placeholder="например, spider" class="search">
+  <div class="f">
+    <label>Поиск</label>
+    <input type="text" name="q" value="{{.Params.Search}}" placeholder="Название игры">
   </div>
-
-  <div class="field">
-    <label>Год от / до</label>
-    <div class="field-row">
-      {{$yf := .Params.YearFrom}}
-      <select name="year_from">
-        <option value="">—</option>
-        {{range .Years}}<option value="{{.}}" {{if eq $yf .}}selected{{end}}>{{.}}</option>{{end}}
-      </select>
-      <span>–</span>
-      {{$yt := .Params.YearTo}}
-      <select name="year_to">
-        <option value="">—</option>
-        {{range .Years}}<option value="{{.}}" {{if eq $yt .}}selected{{end}}>{{.}}</option>{{end}}
-      </select>
+  <div class="f">
+    <span class="flabel">Год</span>
+    <div class="pair">
+      <input type="number" name="year_from" placeholder="{{if .Years}}{{index .Years (add (len .Years) -1)}}{{end}}"
+        {{if gt .Params.YearFrom 0}}value="{{.Params.YearFrom}}"{{end}}>
+      <span class="dash">–</span>
+      <input type="number" name="year_to" placeholder="{{if .Years}}{{index .Years 0}}{{end}}"
+        {{if gt .Params.YearTo 0}}value="{{.Params.YearTo}}"{{end}}>
     </div>
   </div>
-
-  <div class="field">
-    <label>Жанр</label>
+  <div class="f">
+    <span class="flabel">Жанр</span>
     {{$selectedGenres := .Params.Genres}}
     <details class="genre-dd">
       <summary>{{if $selectedGenres}}Выбрано: {{len $selectedGenres}}{{else}}Все жанры{{end}}</summary>
@@ -116,64 +388,56 @@
     </details>
   </div>
 
-  <div class="field">
-    <label>Средний рейтинг от / до</label>
-    <div class="field-row">
-      <input type="number" name="avg_from" min="0" max="100" step="1" placeholder="0"
-        {{if gt .Params.AvgFrom 0.0}}value="{{printf "%.0f" .Params.AvgFrom}}"{{end}}>
-      <span>–</span>
-      <input type="number" name="avg_to" min="0" max="100" step="1" placeholder="100"
-        {{if gt .Params.AvgTo 0.0}}value="{{printf "%.0f" .Params.AvgTo}}"{{end}}>
+  {{$criticFrom := printf "%.0f" .Params.CriticFrom}}
+  {{$criticTo := "100"}}{{if gt .Params.CriticTo 0.0}}{{$criticTo = printf "%.0f" .Params.CriticTo}}{{end}}
+  <div class="f">
+    <span class="flabel">Критики · <span class="val" data-out="critic">{{$criticFrom}}–{{$criticTo}}</span></span>
+    <div class="range" data-name="critic" data-min="0" data-max="100">
+      <div class="track"><div class="fill"></div></div>
+      <input type="range" class="lo" name="critic_from" min="0" max="100" value="{{$criticFrom}}" aria-label="Оценка критиков, от">
+      <input type="range" class="hi" name="critic_to" min="0" max="100" value="{{$criticTo}}" aria-label="Оценка критиков, до">
+    </div>
+  </div>
+  {{$playerFrom := printf "%.0f" .Params.PlayerFrom}}
+  {{$playerTo := "100"}}{{if gt .Params.PlayerTo 0.0}}{{$playerTo = printf "%.0f" .Params.PlayerTo}}{{end}}
+  <div class="f">
+    <span class="flabel">Игроки · <span class="val" data-out="player">{{$playerFrom}}–{{$playerTo}}</span></span>
+    <div class="range" data-name="player" data-min="0" data-max="100">
+      <div class="track"><div class="fill"></div></div>
+      <input type="range" class="lo" name="player_from" min="0" max="100" value="{{$playerFrom}}" aria-label="Оценка игроков, от">
+      <input type="range" class="hi" name="player_to" min="0" max="100" value="{{$playerTo}}" aria-label="Оценка игроков, до">
+    </div>
+  </div>
+  {{$hltbFrom := printf "%.0f" .Params.HLTBFromHours}}
+  {{$hltbTo := "80"}}{{if gt .Params.HLTBToHours 0.0}}{{$hltbTo = printf "%.0f" .Params.HLTBToHours}}{{end}}
+  <div class="f">
+    <span class="flabel">Время, ч · <span class="val" data-out="hltb">{{$hltbFrom}}–{{$hltbTo}}</span></span>
+    <div class="range" data-name="hltb" data-min="0" data-max="80">
+      <div class="track"><div class="fill"></div></div>
+      <input type="range" class="lo" name="hltb_from" min="0" max="80" value="{{$hltbFrom}}" aria-label="Время прохождения, от">
+      <input type="range" class="hi" name="hltb_to" min="0" max="80" value="{{$hltbTo}}" aria-label="Время прохождения, до">
     </div>
   </div>
 
-  <div class="field">
-    <label>Оценки критиков от / до</label>
-    <div class="field-row">
-      <input type="number" name="critic_from" min="0" max="100" step="1" placeholder="0"
-        {{if gt .Params.CriticFrom 0.0}}value="{{printf "%.0f" .Params.CriticFrom}}"{{end}}>
-      <span>–</span>
-      <input type="number" name="critic_to" min="0" max="100" step="1" placeholder="100"
-        {{if gt .Params.CriticTo 0.0}}value="{{printf "%.0f" .Params.CriticTo}}"{{end}}>
+  <div class="f">
+    <span class="flabel">Русский язык</span>
+    <div class="checks">
+      <label><input type="checkbox" name="ru_sub" value="1" {{if .Params.RuSubtitles}}checked{{end}}> Субтитры</label>
+      <label><input type="checkbox" name="ru_voice" value="1" {{if .Params.RuVoice}}checked{{end}}> Озвучка</label>
     </div>
   </div>
-
-  <div class="field">
-    <label>Оценки игроков от / до</label>
-    <div class="field-row">
-      <input type="number" name="player_from" min="0" max="100" step="1" placeholder="0"
-        {{if gt .Params.PlayerFrom 0.0}}value="{{printf "%.0f" .Params.PlayerFrom}}"{{end}}>
-      <span>–</span>
-      <input type="number" name="player_to" min="0" max="100" step="1" placeholder="100"
-        {{if gt .Params.PlayerTo 0.0}}value="{{printf "%.0f" .Params.PlayerTo}}"{{end}}>
-    </div>
-  </div>
-
-  <div class="field">
-    <label>Main+Sides (ч) от / до</label>
-    <div class="field-row">
-      <input type="number" name="hltb_from" min="0" step="1" placeholder="0"
-        {{if gt .Params.HLTBFromHours 0.0}}value="{{printf "%.0f" .Params.HLTBFromHours}}"{{end}}>
-      <span>–</span>
-      <input type="number" name="hltb_to" min="0" step="1" placeholder="∞"
-        {{if gt .Params.HLTBToHours 0.0}}value="{{printf "%.0f" .Params.HLTBToHours}}"{{end}}>
-    </div>
-  </div>
-
-  <div class="field">
+  <div class="f">
     <label>Сортировка</label>
     <select name="sort">
       {{$s := .Params.Sort}}
       <option value="title"    {{if eq $s "title"}}selected{{end}}>По названию</option>
       <option value="year"     {{if eq $s "year"}}selected{{end}}>По году</option>
-      <option value="average"  {{if eq $s "average"}}selected{{end}}>По средней оценке</option>
-      <option value="critic"   {{if eq $s "critic"}}selected{{end}}>По оценке критиков</option>
-      <option value="player"   {{if eq $s "player"}}selected{{end}}>По оценке игроков</option>
-      <option value="hltbmain" {{if eq $s "hltbmain"}}selected{{end}}>По времени (Main+Sides)</option>
+      <option value="critic"   {{if eq $s "critic"}}selected{{end}}>Вердикт критиков</option>
+      <option value="player"   {{if eq $s "player"}}selected{{end}}>Вердикт игроков</option>
+      <option value="hltbmain" {{if eq $s "hltbmain"}}selected{{end}}>Время прохождения</option>
     </select>
   </div>
-
-  <div class="field">
+  <div class="f">
     <label>Порядок</label>
     <select name="order">
       {{$o := .Params.Order}}
@@ -181,107 +445,184 @@
       <option value="desc" {{if eq $o "desc"}}selected{{end}}>По убыванию</option>
     </select>
   </div>
-
-  <div class="field">
-    <label>Русский язык</label>
-    <div class="lang-checks">
-      <label class="lang-check">
-        <input type="checkbox" name="ru_sub" value="1" {{if .Params.RuSubtitles}}checked{{end}}>
-        Субтитры
-      </label>
-      <label class="lang-check">
-        <input type="checkbox" name="ru_voice" value="1" {{if .Params.RuVoice}}checked{{end}}>
-        Озвучка
-      </label>
-    </div>
-  </div>
-
-  <button type="submit">Применить</button>
+  <button class="btn" type="submit">Показать</button>
   <a class="reset" href="?">Сбросить</a>
 </form>
 
 {{if .Result.Games}}
 <div class="grid">
   {{range .Result.Games}}
-  <div class="card">
-    {{if .ImageURL}}<img loading="lazy" src="{{.ImageURL}}" alt="">{{end}}
-    <div class="body">
-      <div class="title"><a href="{{.StoreURL}}" target="_blank" rel="noopener">{{.Title}}</a></div>
-      <div class="meta">{{if .ReleaseYear}}{{.ReleaseYear}}{{end}}{{if .Platforms}} · {{.Platforms}}{{end}}</div>
-      <div class="genres">{{range .Genres}}<span>{{.}}</span>{{end}}</div>
-      {{if or .RuSub .RuVoice}}<div class="lang-badges">
-        {{if .RuSub}}<span class="lang-badge sub">RU SUB</span>{{end}}
-        {{if .RuVoice}}<span class="lang-badge voice">RU VOICE</span>{{end}}
-      </div>{{end}}
-      <div class="scores">
-        <div class="score {{if not .Average.Valid}}na{{end}}">
-          <div class="v">{{if .Average.Valid}}{{printf "%.1f" .Average.Float64}}{{else}}—{{end}}</div>
-          <div class="l">Среднее</div>
-        </div>
-        <div class="score {{if not .CriticAverage.Valid}}na{{end}}">
-          <div class="v">{{if .CriticAverage.Valid}}{{printf "%.1f" .CriticAverage.Float64}}{{else}}—{{end}}</div>
+  <div class="gcard">
+    <div class="cover">
+      {{if .ImageURL}}<img loading="lazy" src="{{.ImageURL}}" alt="">{{end}}
+      {{if or .RuSub .RuVoice}}
+      <div class="ru-flags">
+        {{if .RuSub}}<span>RU СУБ</span>{{end}}
+        {{if .RuVoice}}<span>RU ОЗВ</span>{{end}}
+      </div>
+      {{end}}
+    </div>
+    <div class="gbody">
+      <div class="gtitle"><a href="{{.StoreURL}}" target="_blank" rel="noopener">{{.Title}}</a></div>
+      <div class="gmeta">{{if .ReleaseYear}}{{.ReleaseYear}}{{end}}{{if .Platforms}}{{if .ReleaseYear}} · {{end}}{{.Platforms}}{{end}}</div>
+
+      {{$w := .OCPlayerWeight}}
+      <div class="verdict">
+        <div class="chip {{if .CriticAverage.Valid}}{{scoreClass .CriticAverage.Float64}}{{else}}na{{end}}">
+          <div class="n">{{if .CriticAverage.Valid}}{{printf "%.0f" .CriticAverage.Float64}}{{else}}—{{end}}</div>
           <div class="l">Критики</div>
         </div>
-        <div class="score {{if not .PlayerAverage.Valid}}na{{end}}">
-          <div class="v">{{if .PlayerAverage.Valid}}{{printf "%.1f" .PlayerAverage.Float64}}{{else}}—{{end}}</div>
+        <div class="chip {{if .PlayerAverage.Valid}}{{scoreClass .PlayerAverage.Float64}}{{else}}na{{end}}">
+          <div class="n">{{if .PlayerAverage.Valid}}{{printf "%.0f" .PlayerAverage.Float64}}{{else}}—{{end}}</div>
           <div class="l">Игроки</div>
+          {{with .OCWeightGlyph}}
+          <span class="w" title="{{if eq $w 1.0}}Голоса игроков OpenCritic учтены полностью{{else if eq $w 0.5}}Голоса игроков OpenCritic учтены с весом 0.5{{else}}Голоса игроков OpenCritic не учтены: меньше 20 оценок{{end}}">{{.}}</span>
+          {{end}}
         </div>
       </div>
-      <div class="scores">
-        <a class="score {{if not .HLTBMainSec.Valid}}na{{end}}" href="{{.HLTBURL}}" target="_blank" rel="noopener" title="Открыть на HowLongToBeat">
-          <div class="v">{{if .HLTBMainSec.Valid}}{{printf "%.1f" .HLTBHours}}ч{{else}}—{{end}}</div>
-          <div class="l">Main+Sides</div>
-        </a>
-        <a class="score {{if not (and .HLTBRating.Valid (gt .HLTBRating.Int64 0))}}na{{end}}" href="{{.HLTBURL}}" target="_blank" rel="noopener" title="Открыть на HowLongToBeat">
-          <div class="v">{{if and .HLTBRating.Valid (gt .HLTBRating.Int64 0)}}{{.HLTBRating.Int64}}{{else}}—{{end}}</div>
-          <div class="l">HLTB Rating</div>
-        </a>
-      </div>
-      <div class="score-details">
-        <a class="score-line" href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">
-          <span class="name">MC critic</span>
-          <span class="bar"><span style="width:{{if and .Metacritic.Valid (gt .Metacritic.Int64 0)}}{{.Metacritic.Int64}}{{else}}0{{end}}%"></span></span>
-          <span class="num">{{if and .Metacritic.Valid (gt .Metacritic.Int64 0)}}{{.Metacritic.Int64}}{{else}}—{{end}}</span>
-        </a>
-        <a class="score-line" href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">
-          <span class="name">MC user</span>
-          <span class="bar"><span style="width:{{if and .MetacriticUser.Valid (gt .MetacriticUser.Int64 0)}}{{.MetacriticUser.Int64}}{{else}}0{{end}}%"></span></span>
-          <span class="num">{{if and .MetacriticUser.Valid (gt .MetacriticUser.Int64 0)}}{{.MetacriticUser.Int64}}{{else}}—{{end}}</span>
-        </a>
-        <a class="score-line" href="{{.OpenCriticURL}}" target="_blank" rel="noopener" title="Открыть на OpenCritic">
-          <span class="name">OC critic</span>
-          <span class="bar"><span style="width:{{if and .OpenCritic.Valid (gt .OpenCritic.Int64 0)}}{{.OpenCritic.Int64}}{{else}}0{{end}}%"></span></span>
-          <span class="num">{{if and .OpenCritic.Valid (gt .OpenCritic.Int64 0)}}{{.OpenCritic.Int64}}{{else}}—{{end}}</span>
-        </a>
-        <a class="score-line" href="{{.OpenCriticURL}}" target="_blank" rel="noopener" title="Открыть на OpenCritic">
-          <span class="name">OC player</span>
-          <span class="bar"><span style="width:{{if and .OpenCriticPlayer.Valid (gt .OpenCriticPlayer.Int64 0)}}{{.OpenCriticPlayer.Int64}}{{else}}0{{end}}%"></span></span>
-          <span class="num">{{if and .OpenCriticPlayer.Valid (gt .OpenCriticPlayer.Int64 0)}}{{.OpenCriticPlayer.Int64}}{{else}}—{{end}}</span>
-        </a>
-        {{if or .MetacriticUserCount.Valid .OpenCriticPlayerCount.Valid}}
-        <div class="score-counts">
-          {{if .MetacriticUserCount.Valid}}MC users: {{.MetacriticUserCount.Int64}}{{end}}{{if and .MetacriticUserCount.Valid .OpenCriticPlayerCount.Valid}} · {{end}}{{if .OpenCriticPlayerCount.Valid}}OC players: {{.OpenCriticPlayerCount.Int64}}{{end}}
+
+      <div class="sources">
+        <div class="sg sg-c">
+          <div class="scap">Критики</div>
+          <div class="cells">
+            <div class="src">
+              <div class="sl">MC</div>
+              <div class="sv">{{if and .Metacritic.Valid (gt .Metacritic.Int64 0)}}<a href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">{{.Metacritic.Int64}}</a>{{else}}<span class="na">—</span>{{end}}</div>
+            </div>
+            <div class="src">
+              <div class="sl">OC</div>
+              <div class="sv">{{if and .OpenCritic.Valid (gt .OpenCritic.Int64 0)}}<a href="{{.OpenCriticURL}}" target="_blank" rel="noopener" title="Открыть на OpenCritic">{{.OpenCritic.Int64}}</a>{{else}}<span class="na">—</span>{{end}}</div>
+            </div>
+          </div>
         </div>
-        {{end}}
+        <div class="sg sg-p">
+          <div class="scap">Игроки</div>
+          <div class="cells">
+            <div class="src">
+              <div class="sl">MC</div>
+              <div class="sv">{{if and .MetacriticUser.Valid (gt .MetacriticUser.Int64 0)}}<a href="{{.MetacriticURL}}" target="_blank" rel="noopener" title="Открыть на Metacritic">{{.MetacriticUser.Int64}}</a>{{else}}<span class="na">—</span>{{end}}</div>
+              {{if .MetacriticUserCount.Valid}}<div class="sc">{{fmtCount .MetacriticUserCount.Int64}}</div>{{end}}
+            </div>
+            <div class="src">
+              <div class="sl">OC</div>
+              {{if and .OpenCriticPlayer.Valid (gt .OpenCriticPlayer.Int64 0)}}
+                {{if eq $w 1.0}}
+                <div class="sv"><a href="{{.OpenCriticURL}}" target="_blank" rel="noopener" title="Открыть на OpenCritic">{{.OpenCriticPlayer.Int64}}</a></div>
+                {{else if eq $w 0.5}}
+                <div class="sv half" title="Учтена с весом 0.5"><a href="{{.OpenCriticURL}}" target="_blank" rel="noopener">{{.OpenCriticPlayer.Int64}}</a></div>
+                {{else}}
+                <div class="sv"><span class="na" title="Не учтена: меньше 20 голосов">—</span></div>
+                {{end}}
+              {{else}}
+              <div class="sv"><span class="na">—</span></div>
+              {{end}}
+              {{if .OpenCriticPlayerCount.Valid}}<div class="sc">{{fmtCount .OpenCriticPlayerCount.Int64}}</div>{{end}}
+            </div>
+            <div class="src">
+              <div class="sl">HLTB</div>
+              <div class="sv">{{if and .HLTBRating.Valid (gt .HLTBRating.Int64 0)}}<a href="{{.HLTBURL}}" target="_blank" rel="noopener" title="Открыть на HowLongToBeat">{{.HLTBRating.Int64}}</a>{{else}}<span class="na">—</span>{{end}}</div>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {{if .Genres}}
+      <div class="tags">{{range .Genres}}<span>{{.}}</span>{{end}}</div>
+      {{end}}
+    </div>
+    <div class="gtime"{{if .HLTBMainSec.Valid}} title="{{printf "%.0f" .HLTBHours}} ч{{if hltbOver .HLTBHours}} — дольше шкалы 60 ч{{else}} по шкале 0–60 ч{{end}}"{{end}}>
+      {{if .HLTBMainSec.Valid}}
+      <a class="h" href="{{.HLTBURL}}" target="_blank" rel="noopener">{{printf "%.0f" .HLTBHours}} <small>ч</small></a>
+      <div class="ruler"><i style="width:{{hltbPct .HLTBHours}}%"></i></div>
+      {{if hltbOver .HLTBHours}}<span class="omark">▸</span>{{end}}
+      {{else}}
+      <span class="h"><span class="na">—</span></span>
+      <div class="ruler"></div>
+      {{end}}
     </div>
   </div>
   {{end}}
 </div>
 
-<nav class="pager">
-  {{if .HasPrev}}<a href="?{{.BaseQuery}}&page=1">« Первая</a>{{else}}<span class="disabled">« Первая</span>{{end}}
-  {{if .HasPrev}}<a href="?{{.BaseQuery}}&page={{add .Result.Page -1}}">‹ Назад</a>{{else}}<span class="disabled">‹ Назад</span>{{end}}
-  {{$cur := .Result.Page}}{{$bq := .BaseQuery}}
-  {{range .Pages}}
-    {{if eq . $cur}}<span class="cur">{{.}}</span>{{else}}<a href="?{{$bq}}&page={{.}}">{{.}}</a>{{end}}
+<nav class="pager" aria-label="Страницы">
+  {{$cur := .Result.Page}}{{$bq := .BaseQuery}}{{$tp := .Result.TotalPages}}
+  {{if .HasPrev}}<a href="?{{$bq}}&page={{add $cur -1}}">‹</a>{{else}}<span class="dis">‹</span>{{end}}
+  {{if .Pages}}
+    {{$first := index .Pages 0}}
+    {{if gt $first 1}}<a href="?{{$bq}}&page=1">1</a>{{if gt $first 2}}<span class="gap">…</span>{{end}}{{end}}
+    {{range .Pages}}
+      {{if eq . $cur}}<span class="cur">{{.}}</span>{{else}}<a href="?{{$bq}}&page={{.}}">{{.}}</a>{{end}}
+    {{end}}
+    {{$last := index .Pages (add (len .Pages) -1)}}
+    {{if lt $last $tp}}{{if lt $last (add $tp -1)}}<span class="gap">…</span>{{end}}<a href="?{{$bq}}&page={{$tp}}">{{$tp}}</a>{{end}}
   {{end}}
-  {{if .HasNext}}<a href="?{{.BaseQuery}}&page={{add .Result.Page 1}}">Вперёд ›</a>{{else}}<span class="disabled">Вперёд ›</span>{{end}}
-  {{if .HasNext}}<a href="?{{.BaseQuery}}&page={{.Result.TotalPages}}">Последняя »</a>{{else}}<span class="disabled">Последняя »</span>{{end}}
+  {{if .HasNext}}<a href="?{{$bq}}&page={{add $cur 1}}">›</a>{{else}}<span class="dis">›</span>{{end}}
 </nav>
-{{else}}
-<div class="empty">Ничего не найдено по выбранным фильтрам.</div>
-{{end}}
+<div class="pcount">Страница <b>{{.Result.Page}}</b> из <b>{{.Result.TotalPages}}</b> · показано <b>{{len .Result.Games}}</b> из <b>{{.Result.Total}}</b> игр</div>
 
+{{else}}
+<div class="empty">
+  <div class="big">По этим фильтрам ничего не нашлось</div>
+  <p>Расширьте диапазон оценок или времени прохождения, либо уберите ограничение по русскому языку.</p>
+  <a class="reset" href="?">Сбросить все фильтры</a>
+</div>
+{{end}}
+</div>
+
+<script>
+/* Двухползунковые слайдеры: заливка выбранного диапазона и живое значение */
+document.querySelectorAll('.range').forEach(function (r) {
+  var lo = r.querySelector('.lo'),
+      hi = r.querySelector('.hi'),
+      fill = r.querySelector('.fill'),
+      out = document.querySelector('[data-out="' + r.dataset.name + '"]'),
+      min = +r.dataset.min, max = +r.dataset.max;
+  function sync(src) {
+    var a = +lo.value, b = +hi.value;
+    if (a > b) { if (src === lo) hi.value = a; else lo.value = b; a = +lo.value; b = +hi.value; }
+    fill.style.left = ((a - min) / (max - min) * 100) + '%';
+    fill.style.right = (100 - (b - min) / (max - min) * 100) + '%';
+    if (out) out.textContent = a + '–' + b;
+  }
+  lo.addEventListener('input', function () { sync(lo); });
+  hi.addEventListener('input', function () { sync(hi); });
+  sync();
+});
+
+/* Слайдеры на краях шкалы не отправляем: чистый URL (сервер трактует край так же) */
+document.querySelector('form.filters').addEventListener('submit', function () {
+  document.querySelectorAll('.range').forEach(function (r) {
+    var lo = r.querySelector('.lo'), hi = r.querySelector('.hi');
+    if (+lo.value === +lo.min) lo.disabled = true;
+    if (+hi.value === +hi.max) hi.disabled = true;
+  });
+});
+
+/* Переключатель светлой/тёмной темы */
+(function () {
+  var root = document.documentElement,
+      btn = document.getElementById('themeToggle');
+  function cur() {
+    return root.dataset.theme ||
+      (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  }
+  function paint() { btn.textContent = cur() === 'dark' ? '☀' : '☾'; }
+  try { var s = localStorage.getItem('theme'); if (s) root.dataset.theme = s; } catch (e) {}
+  btn.addEventListener('click', function () {
+    var next = cur() === 'dark' ? 'light' : 'dark';
+    root.dataset.theme = next;
+    try { localStorage.setItem('theme', next); } catch (e) {}
+    paint();
+  });
+  paint();
+})();
+
+/* Закрывать справку по клику мимо неё */
+document.addEventListener('click', function (e) {
+  document.querySelectorAll('details.help[open]').forEach(function (d) {
+    if (!d.contains(e.target)) d.removeAttribute('open');
+  });
+});
+</script>
 </body>
 </html>

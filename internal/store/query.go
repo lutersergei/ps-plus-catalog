@@ -67,6 +67,44 @@ func (g GameView) HLTBHours() float64 {
 	return float64(g.HLTBMainSec.Int64) / 3600
 }
 
+// OCPlayerWeight — вес пользовательской оценки OpenCritic в среднем игроков.
+// Зеркалирует SQL-выражение openCriticPlayerWeightExpr (games.go): без оценки
+// или при <20 голосов — 0, при >100 голосов — 1, иначе 0.5.
+func (g GameView) OCPlayerWeight() float64 {
+	if !g.OpenCriticPlayer.Valid || g.OpenCriticPlayer.Int64 <= 0 {
+		return 0
+	}
+	count := int64(0)
+	if g.OpenCriticPlayerCount.Valid {
+		count = g.OpenCriticPlayerCount.Int64
+	}
+	switch {
+	case count < 20:
+		return 0
+	case count > 100:
+		return 1
+	default:
+		return 0.5
+	}
+}
+
+// OCWeightGlyph — глиф веса пользовательской оценки OpenCritic для шаблона:
+// ● полный вес, ◐ половинный, ○ не учтена. Пустая строка, когда данных
+// OpenCritic об оценке игроков нет вовсе (нечего объяснять).
+func (g GameView) OCWeightGlyph() string {
+	if !g.OpenCriticPlayer.Valid && !g.OpenCriticPlayerCount.Valid {
+		return ""
+	}
+	switch g.OCPlayerWeight() {
+	case 1:
+		return "●"
+	case 0.5:
+		return "◐"
+	default:
+		return "○"
+	}
+}
+
 var termCleaner = strings.NewReplacer("™", "", "®", "", "’", "'")
 
 // searchTerm — название для поиска на внешних ресурсах (английское, иначе
