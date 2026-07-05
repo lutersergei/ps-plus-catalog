@@ -197,3 +197,60 @@ func assertBuckets(t *testing.T, got, want []IndexBucket) {
 		}
 	}
 }
+
+func TestIndexBucketsScoreDecades(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	for _, g := range []GameRow{
+		{ID: "g1", Title: "A"},
+		{ID: "g2", Title: "B"},
+		{ID: "g3", Title: "C"}, // без оценки — NULL-хвост, чипа нет
+	} {
+		if err := UpsertGame(db, g); err != nil {
+			t.Fatalf("upsert %s: %v", g.ID, err)
+		}
+	}
+	// дробная средняя 79.5 должна попасть в декаду 70
+	if _, err := db.Exec(`UPDATE games SET critic_average_score = 79.5 WHERE id = 'g1'`); err != nil {
+		t.Fatalf("update g1: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE games SET critic_average_score = 85 WHERE id = 'g2'`); err != nil {
+		t.Fatalf("update g2: %v", err)
+	}
+
+	got, err := IndexBuckets(db, ListParams{Sort: "critic", Order: "asc"})
+	if err != nil {
+		t.Fatalf("buckets: %v", err)
+	}
+	assertBuckets(t, got, []IndexBucket{{"70", 0}, {"80", 1}})
+
+	got, err = IndexBuckets(db, ListParams{Sort: "critic", Order: "desc"})
+	if err != nil {
+		t.Fatalf("buckets desc: %v", err)
+	}
+	assertBuckets(t, got, []IndexBucket{{"80", 0}, {"70", 1}})
+}
+
+func TestIndexBucketsPlayerDecades(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	if err := UpsertGame(db, GameRow{ID: "g1", Title: "A"}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE games SET player_average_score = 91 WHERE id = 'g1'`); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	got, err := IndexBuckets(db, ListParams{Sort: "player", Order: "desc"})
+	if err != nil {
+		t.Fatalf("buckets: %v", err)
+	}
+	assertBuckets(t, got, []IndexBucket{{"90", 0}})
+}

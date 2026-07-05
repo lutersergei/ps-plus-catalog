@@ -325,10 +325,22 @@ func IndexBuckets(db *sql.DB, p ListParams) ([]IndexBucket, error) {
 		return TitleIndexBuckets(db, p)
 	case "year":
 		return valueIndexBuckets(db, p, "release_year", yearBucketLabel)
+	case "critic":
+		return valueIndexBuckets(db, p, decadeExpr("critic_average_score"), decadeBucketLabel)
+	case "player":
+		return valueIndexBuckets(db, p, decadeExpr("player_average_score"), decadeBucketLabel)
 	default:
 		return nil, nil
 	}
 }
+
+// decadeExpr — SQL-выражение декады оценки: 79.5 → 70, 85 → 80.
+func decadeExpr(col string) string {
+	return "CAST(" + col + "/10 AS INTEGER)*10"
+}
+
+// decadeBucketLabel — подпись бакета декады оценки.
+func decadeBucketLabel(v int64) string { return strconv.FormatInt(v, 10) }
 
 // yearBucketLabel — подпись бакета года; нулевой/отсутствующий год — «—».
 func yearBucketLabel(v int64) string {
