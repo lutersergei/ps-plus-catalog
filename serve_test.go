@@ -227,43 +227,87 @@ func TestIndexTemplateExcludedOCPlayerShowsDashWithVotes(t *testing.T) {
 	}
 }
 
-func TestIndexTemplateRendersPagerWindow(t *testing.T) {
+func TestIndexTemplateRendersLetterIndexAndMoreLink(t *testing.T) {
 	tmpl, err := newIndexTemplate()
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-
 	data := pageData{
 		Result: store.ListResult{
-			Games: []store.GameView{{
-				ID:    "g1",
-				Title: "Game",
-			}},
-			Page:       7,
+			Games:      []store.GameView{{ID: "g1", Title: "Game"}},
+			Total:      469,
+			Page:       1,
+			PageSize:   24,
 			TotalPages: 20,
 		},
-		BaseQuery: template.URL("sort=title&order=asc"),
-		Pages:     []int{3, 4, 5, 6, 7, 8, 9, 10, 11},
-		HasPrev:   true,
-		HasNext:   true,
+		Params:     store.ListParams{Sort: "title"},
+		BaseQuery:  template.URL("sort=title&order=asc"),
+		Letters:    []store.LetterBucket{{Letter: "#", Offset: 0}, {Letter: "A", Offset: 3}},
+		NextOffset: 24,
+		HasNext:    true,
 	}
-
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	body := buf.String()
 	for _, want := range []string{
-		`href="?sort=title&amp;order=asc&page=6">‹</a>`,
-		`href="?sort=title&amp;order=asc&page=8">›</a>`,
-		`class="cur">7</span>`,
-		// окно не с первой страницы и не до последней — есть короткие ссылки на края
-		`&page=1">1</a>`,
-		`&page=20">20</a>`,
+		`class="achip" data-offset="3"`,
+		`id="moreLink"`,
+		`offset=24`,
+		`Показать ещё`,
+		`id="shownCount"`,
+		`data-next="24"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("rendered template missing %q", want)
 		}
+	}
+	if strings.Contains(body, `class="pager"`) {
+		t.Fatalf("номерная пагинация должна быть удалена")
+	}
+}
+
+func TestIndexTemplateHidesLetterIndexWithoutBuckets(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	data := pageData{
+		Result: store.ListResult{Games: []store.GameView{{ID: "g1", Title: "Game"}}},
+		Params: store.ListParams{Sort: "player"},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if strings.Contains(buf.String(), `class="achip"`) {
+		t.Fatalf("индекс не должен рендериться без бакетов")
+	}
+}
+
+func TestHandleIndexComputesLettersOnlyForTitleSort(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	if err := store.UpsertGame(db, store.GameRow{ID: "g1", Title: "Alpha"}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	tmpl := template.Must(template.New("test").Parse(`letters={{len .Letters}}`))
+
+	rec := httptest.NewRecorder()
+	handleIndex(rec, httptest.NewRequest("GET", "/?sort=title", nil), db, tmpl)
+	if !strings.Contains(rec.Body.String(), "letters=1") {
+		t.Fatalf("body=%q, ждали letters=1 при sort=title", rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	handleIndex(rec, httptest.NewRequest("GET", "/?sort=player", nil), db, tmpl)
+	if !strings.Contains(rec.Body.String(), "letters=0") {
+		t.Fatalf("body=%q, ждали letters=0 при sort=player", rec.Body.String())
 	}
 }
 

@@ -103,14 +103,14 @@ func normalizeSliderBounds(p *store.ListParams) {
 }
 
 type pageData struct {
-	Result    store.ListResult
-	Years     []int
-	Genres    []string
-	Params    store.ListParams
-	BaseQuery template.URL // query без page — для ссылок пагинации
-	Pages     []int        // окно номеров страниц
-	HasPrev   bool
-	HasNext   bool
+	Result     store.ListResult
+	Years      []int
+	Genres     []string
+	Params     store.ListParams
+	BaseQuery  template.URL // query без page/offset — для ссылок ленты и индекса
+	Letters    []store.LetterBucket
+	NextOffset int // смещение следующей партии для «Показать ещё»
+	HasNext    bool
 }
 
 func runServe(args []string) error {
@@ -264,6 +264,17 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 		return
 	}
 
+	// Буквенный индекс имеет смысл только при сортировке по названию.
+	var letters []store.LetterBucket
+	if p.Sort == "title" {
+		letters, err = store.TitleLetterBuckets(db, p)
+		if err != nil {
+			log.Printf("letter buckets: %v", err)
+			http.Error(w, "внутренняя ошибка сервера", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	// BaseQuery — query без page, для ссылок пагинации
 	base := url.Values{}
 	if p.Search != "" {
@@ -313,40 +324,20 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 	}
 
 	data := pageData{
-		Result:    result,
-		Years:     years,
-		Genres:    genreList,
-		Params:    p,
-		BaseQuery: template.URL(base.Encode()),
-		Pages:     pageWindow(result.Page, result.TotalPages),
-		HasPrev:   result.Page > 1,
-		HasNext:   result.Page < result.TotalPages,
+		Result:     result,
+		Years:      years,
+		Genres:     genreList,
+		Params:     p,
+		BaseQuery:  template.URL(base.Encode()),
+		Letters:    letters,
+		NextOffset: result.Page * result.PageSize,
+		HasNext:    result.Page < result.TotalPages,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("render: %v", err)
 	}
-}
-
-// pageWindow возвращает номера страниц вокруг текущей (максимум 9).
-func pageWindow(current, total int) []int {
-	if total < 1 {
-		return nil
-	}
-	const span = 4
-	start, end := current-span, current+span
-	if start < 1 {
-		start = 1
-	}
-	if end > total {
-		end = total
-	}
-	pages := make([]int, 0, end-start+1)
-	for i := start; i <= end; i++ {
-		pages = append(pages, i)
-	}
-	return pages
 }
 
 func atoiDefault(s string, def int) int {

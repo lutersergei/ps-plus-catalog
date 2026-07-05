@@ -303,23 +303,34 @@ a.h:hover { color: var(--cobalt); }
 @media (prefers-reduced-motion: reduce) { .ruler i { animation: none; } }
 .omark { font-size: 9px; color: var(--cobalt); margin-left: -4px; }
 
-/* ---------- Пагинация ---------- */
-.pager {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  justify-content: center; align-items: center;
-  padding: 14px 0;
-  font-family: var(--mono); font-size: 13px;
+/* ---------- Лента и буквенный индекс ---------- */
+.catalog { display: flex; gap: 14px; align-items: flex-start; padding: 22px 0; }
+.catalog .grid { flex: 1; padding: 0; }
+.alpha {
+  position: sticky; top: 12px;
+  display: flex; flex-direction: column; gap: 3px;
+  max-height: calc(100vh - 24px); overflow-y: auto;
 }
-.pager a, .pager span {
-  min-width: 34px; text-align: center;
-  padding: 7px 9px;
-  border: 1px solid var(--line); border-radius: 7px;
-  background: var(--card); color: var(--ink);
-  text-decoration: none;
+.achip {
+  min-width: 26px; text-align: center;
+  padding: 4px 6px;
+  border: 1px solid var(--line-soft); border-radius: 6px;
+  background: var(--card);
+  font: 700 11px var(--mono);
+  color: var(--muted); text-decoration: none;
 }
-.pager .cur { background: var(--cobalt); border-color: var(--cobalt); color: var(--paper); }
-.pager .dis { opacity: .4; }
-.pager .gap { border: none; background: none; color: var(--faint); }
+.achip:hover { color: var(--cobalt); border-color: var(--cobalt); }
+.achip.on { background: var(--cobalt); border-color: var(--cobalt); color: var(--paper); }
+.morewrap { display: flex; justify-content: center; padding: 4px 0 14px; }
+a.more { text-decoration: none; }
+@media (max-width: 1200px) {
+  .catalog { display: block; }
+  .alpha {
+    position: static; flex-direction: row;
+    overflow-x: auto; max-height: none;
+    margin-top: 14px; padding-bottom: 4px;
+  }
+}
 .pcount { text-align: center; color: var(--muted); font-size: 12px; padding-bottom: 50px; }
 .pcount b { font-family: var(--mono); color: var(--ink); }
 
@@ -545,23 +556,22 @@ a.h:hover { color: var(--cobalt); }
 {{end}}
 
 {{if .Result.Games}}
-<div class="grid">{{template "cards" .}}</div>
-
-<nav class="pager" aria-label="Страницы">
-  {{$cur := .Result.Page}}{{$bq := .BaseQuery}}{{$tp := .Result.TotalPages}}
-  {{if .HasPrev}}<a href="?{{$bq}}&page={{add $cur -1}}">‹</a>{{else}}<span class="dis">‹</span>{{end}}
-  {{if .Pages}}
-    {{$first := index .Pages 0}}
-    {{if gt $first 1}}<a href="?{{$bq}}&page=1">1</a>{{if gt $first 2}}<span class="gap">…</span>{{end}}{{end}}
-    {{range .Pages}}
-      {{if eq . $cur}}<span class="cur">{{.}}</span>{{else}}<a href="?{{$bq}}&page={{.}}">{{.}}</a>{{end}}
-    {{end}}
-    {{$last := index .Pages (add (len .Pages) -1)}}
-    {{if lt $last $tp}}{{if lt $last (add $tp -1)}}<span class="gap">…</span>{{end}}<a href="?{{$bq}}&page={{$tp}}">{{$tp}}</a>{{end}}
+<div class="catalog">
+  <div class="grid" data-next="{{.NextOffset}}" data-psize="{{.Result.PageSize}}">{{template "cards" .}}</div>
+  {{if .Letters}}
+  <nav class="alpha" aria-label="Быстрый переход по алфавиту">
+    {{$bq := .BaseQuery}}
+    {{range .Letters}}<a class="achip" data-offset="{{.Offset}}" href="?{{$bq}}&offset={{.Offset}}">{{.Letter}}</a>{{end}}
+  </nav>
   {{end}}
-  {{if .HasNext}}<a href="?{{$bq}}&page={{add $cur 1}}">›</a>{{else}}<span class="dis">›</span>{{end}}
-</nav>
-<div class="pcount">Страница <b>{{.Result.Page}}</b> из <b>{{.Result.TotalPages}}</b> · показано <b>{{len .Result.Games}}</b> из <b>{{.Result.Total}}</b> игр</div>
+</div>
+
+{{if .HasNext}}
+<div class="morewrap">
+  <a class="btn more" id="moreLink" href="?{{.BaseQuery}}&offset={{.NextOffset}}">Показать ещё</a>
+</div>
+{{end}}
+<div class="pcount">Показано <b id="shownCount">{{len .Result.Games}}</b> из <b id="totalCount">{{.Result.Total}}</b> игр</div>
 
 {{else}}
 <div class="empty">
