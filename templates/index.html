@@ -557,7 +557,7 @@ a.more { text-decoration: none; }
 
 {{if .Result.Games}}
 <div class="catalog">
-  <div class="grid" data-next="{{.NextOffset}}" data-psize="{{.Result.PageSize}}">{{template "cards" .}}</div>
+  <div class="grid" data-next="{{.NextOffset}}" data-psize="{{.Result.PageSize}}" data-total="{{.Result.Total}}">{{template "cards" .}}</div>
   {{if .Buckets}}
   <nav class="alpha" aria-label="Быстрый переход по алфавиту">
     {{$bq := .BaseQuery}}
@@ -566,11 +566,11 @@ a.more { text-decoration: none; }
   {{end}}
 </div>
 
-{{if .HasNext}}
+{{/* Ссылка рендерится всегда: прыжок по индексу может вернуть ленту в середину
+     списка, и подгрузку нужно уметь включать обратно. Скрыта, пока грузить нечего. */}}
 <div class="morewrap">
-  <a class="btn more" id="moreLink" href="?{{.BaseQuery}}&offset={{.NextOffset}}">Показать ещё</a>
+  <a class="btn more" id="moreLink" {{if not .HasNext}}hidden{{end}} href="?{{.BaseQuery}}&offset={{.NextOffset}}">Показать ещё</a>
 </div>
-{{end}}
 <div class="pcount">Показано <b id="shownCount">{{len .Result.Games}}</b> из <b id="totalCount">{{.Result.Total}}</b> игр</div>
 
 {{else}}
@@ -644,6 +644,7 @@ document.addEventListener('click', function (e) {
   var shown = document.getElementById('shownCount');
   if (!grid) return;
   var psize = +grid.dataset.psize || 24;
+  var total = +grid.dataset.total || 0;
   var inflight = false;
   var smooth = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 
@@ -660,6 +661,7 @@ document.addEventListener('click', function (e) {
       : base + (base.indexOf('?') < 0 ? '?' : '&') + 'offset=' + off;
     return fetch(url + '&fragment=cards').then(function (r) {
       if (!r.ok) throw new Error(r.status);
+      total = +r.headers.get('X-Total') || total;
       return r.text();
     }).then(function (html) {
       var t = document.createElement('template');
@@ -676,20 +678,25 @@ document.addEventListener('click', function (e) {
     u.searchParams.set('offset', off);
     history.replaceState(null, '', u);
   }
-  function endOfList() {
-    if (more) { more.parentNode.removeChild(more); more = null; }
+  /* Конец списка — свойство позиции, а не страницы: после прыжка по индексу
+     в середину подгрузку нужно уметь включать обратно, поэтому ссылку прячем,
+     а не удаляем. */
+  function setMore(next) {
+    if (!more) return;
+    more.href = setOffsetParam(more.href, next);
+    more.hidden = next >= total;
   }
 
   /* Подгрузка следующей партии, когда «Показать ещё» приближается к вьюпорту */
   function loadNext() {
-    if (inflight || !more) return;
+    if (inflight || !more || more.hidden) return;
     inflight = true;
     var next = +grid.dataset.next;
     fetchCards(next).then(function (cards) {
       appendCards(cards);
-      grid.dataset.next = next + cards.length;
-      if (cards.length < psize) { endOfList(); }
-      else { more.href = setOffsetParam(more.href, next + cards.length); }
+      var after = next + cards.length;
+      grid.dataset.next = after;
+      setMore(cards.length ? after : total); // пустой ответ — считаем концом
       syncURL(next);
       inflight = false;
     }).catch(function () { inflight = false; }); // ссылка остаётся — ручной retry
@@ -720,11 +727,9 @@ document.addEventListener('click', function (e) {
     fetchCards(aligned).then(function (cards) {
       grid.innerHTML = '';
       appendCards(cards);
-      grid.dataset.next = aligned + cards.length;
-      if (more) {
-        if (cards.length < psize) endOfList();
-        else more.href = setOffsetParam(more.href, aligned + cards.length);
-      }
+      var after = aligned + cards.length;
+      grid.dataset.next = after;
+      setMore(after);
       syncURL(aligned);
       var t2 = grid.querySelector('[data-i="' + off + '"]');
       if (t2) t2.scrollIntoView({ behavior: smooth, block: 'start' });

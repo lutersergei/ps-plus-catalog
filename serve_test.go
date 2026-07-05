@@ -258,6 +258,7 @@ func TestIndexTemplateRendersLetterIndexAndMoreLink(t *testing.T) {
 		`Показать ещё`,
 		`id="shownCount"`,
 		`data-next="24"`,
+		`data-total="469"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("rendered template missing %q", want)
@@ -265,6 +266,38 @@ func TestIndexTemplateRendersLetterIndexAndMoreLink(t *testing.T) {
 	}
 	if strings.Contains(body, `class="pager"`) {
 		t.Fatalf("номерная пагинация должна быть удалена")
+	}
+}
+
+func TestMoreLinkRenderedHiddenOnLastPage(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	data := pageData{
+		Result: store.ListResult{
+			Games:      []store.GameView{{ID: "g1", Title: "Game"}},
+			Total:      25,
+			Page:       2,
+			PageSize:   24,
+			TotalPages: 2,
+		},
+		BaseQuery:  template.URL("sort=title&order=asc"),
+		NextOffset: 48,
+		HasNext:    false,
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	body := buf.String()
+	// ссылка должна существовать (прыжок по индексу может снова открыть середину
+	// списка), но быть скрытой, пока дальше грузить нечего
+	if !strings.Contains(body, `id="moreLink"`) {
+		t.Fatalf("ссылка «Показать ещё» должна рендериться и на последней странице")
+	}
+	if !strings.Contains(body, `hidden`) {
+		t.Fatalf("на последней странице ссылка должна быть hidden")
 	}
 }
 
