@@ -108,7 +108,7 @@ type pageData struct {
 	Genres     []string
 	Params     store.ListParams
 	BaseQuery  template.URL // query без page/offset — для ссылок ленты и индекса
-	Letters    []store.LetterBucket
+	Buckets    []store.IndexBucket
 	NextOffset int // смещение следующей партии для «Показать ещё»
 	HasNext    bool
 }
@@ -264,15 +264,13 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 		return
 	}
 
-	// Буквенный индекс имеет смысл только при сортировке по названию.
-	var letters []store.LetterBucket
-	if p.Sort == "title" {
-		letters, err = store.TitleLetterBuckets(db, p)
-		if err != nil {
-			log.Printf("letter buckets: %v", err)
-			http.Error(w, "внутренняя ошибка сервера", http.StatusInternalServerError)
-			return
-		}
+	// Индекс быстрого перехода: буквы, годы, декады оценок или пороги времени —
+	// в зависимости от активной сортировки (nil, если индекс не строится).
+	buckets, err := store.IndexBuckets(db, p)
+	if err != nil {
+		log.Printf("index buckets: %v", err)
+		http.Error(w, "внутренняя ошибка сервера", http.StatusInternalServerError)
+		return
 	}
 
 	// BaseQuery — query без page, для ссылок пагинации
@@ -329,7 +327,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 		Genres:     genreList,
 		Params:     p,
 		BaseQuery:  template.URL(base.Encode()),
-		Letters:    letters,
+		Buckets:    buckets,
 		NextOffset: result.Page * result.PageSize,
 		HasNext:    result.Page < result.TotalPages,
 	}

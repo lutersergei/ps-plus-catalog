@@ -51,3 +51,19 @@ func TestOCWeightGlyph(t *testing.T) {
 }
 
 func ni(v int64) sql.NullInt64 { return sql.NullInt64{Int64: v, Valid: true} }
+
+func TestRuStoreURLSwitchesLocale(t *testing.T) {
+	g := GameView{StoreURL: "https://store.playstation.com/tr-tr/concept/228903"}
+	if got, want := g.RuStoreURL(), "https://store.playstation.com/ru-ru/concept/228903"; got != want {
+		t.Errorf("RuStoreURL() = %q, ждали %q", got, want)
+	}
+	// URL без турецкой локали остаётся как есть
+	g = GameView{StoreURL: "https://store.playstation.com/concept/1"}
+	if got := g.RuStoreURL(); got != "https://store.playstation.com/concept/1" {
+		t.Errorf("RuStoreURL() = %q, ждали без изменений", got)
+	}
+	// пустой URL — пустой
+	if got := (GameView{}).RuStoreURL(); got != "" {
+		t.Errorf("RuStoreURL() = %q, ждали пустую строку", got)
+	}
+}

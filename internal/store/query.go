@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/lutersergei/ps-plus-catalog/internal/scores"
@@ -65,6 +67,13 @@ func (g GameView) HLTBHours() float64 {
 		return 0
 	}
 	return float64(g.HLTBMainSec.Int64) / 3600
+}
+
+// RuStoreURL — ссылка на страницу игры в русском PS Store. Каталог собирается
+// из турецкого региона, но пользователю удобнее русская страница магазина —
+// подменяем локаль только при отображении, данные остаются каноничными.
+func (g GameView) RuStoreURL() string {
+	return strings.Replace(g.StoreURL, "/tr-tr/", "/ru-ru/", 1)
 }
 
 // OCPlayerWeight — вес пользовательской оценки OpenCritic в среднем игроков.
@@ -300,18 +309,138 @@ func buildListWhere(p ListParams) (string, []any) {
 	return "WHERE " + strings.Join(where, " AND "), args
 }
 
-// LetterBucket — бакет буквенного индекса: буква и смещение первой строки
-// с этой буквы в текущей выборке.
-type LetterBucket struct {
-	Letter string
+// IndexBucket — бакет индекса быстрого перехода: подпись чипа и смещение
+// первой строки бакета в текущей выборке.
+type IndexBucket struct {
+	Label  string
 	Offset int
 }
 
-// TitleLetterBuckets считает бакеты первого символа названия для буквенного
+// IndexBuckets возвращает бакеты индекса быстрого перехода для активной
+// сортировки: буквы для title, годы для year, декады оценок для critic/player,
+// пороги часов для hltbmain. Для прочих сортировок индекс не строится (nil).
+func IndexBuckets(db *sql.DB, p ListParams) ([]IndexBucket, error) {
+	switch p.Sort {
+	case "title":
+		return TitleIndexBuckets(db, p)
+	case "year":
+		return valueIndexBuckets(db, p, "release_year", yearBucketLabel)
+	case "critic":
+		return valueIndexBuckets(db, p, decadeExpr("critic_average_score"), decadeBucketLabel)
+	case "player":
+		return valueIndexBuckets(db, p, decadeExpr("player_average_score"), decadeBucketLabel)
+	case "hltbmain":
+		return valueIndexBuckets(db, p, hltbThresholdExpr, hltbBucketLabel)
+	default:
+		return nil, nil
+	}
+}
+
+// hltbThresholdExpr — нижняя граница диапазона времени прохождения в часах.
+// Пороги неравномерные: коротких игр в каталоге больше, поэтому шаг в начале
+// шкалы мельче (0/5/10/20/40/60+).
+const hltbThresholdExpr = `CASE
+  WHEN hltb_main_extra IS NULL THEN NULL
+  WHEN hltb_main_extra < 5*3600 THEN 0
+  WHEN hltb_main_extra < 10*3600 THEN 5
+  WHEN hltb_main_extra < 20*3600 THEN 10
+  WHEN hltb_main_extra < 40*3600 THEN 20
+  WHEN hltb_main_extra < 60*3600 THEN 40
+  ELSE 60 END`
+
+// hltbBucketLabel — подпись диапазона времени по его нижней границе.
+func hltbBucketLabel(v int64) string {
+	switch v {
+	case 0:
+		return "0–5"
+	case 5:
+		return "5–10"
+	case 10:
+		return "10–20"
+	case 20:
+		return "20–40"
+	case 40:
+		return "40–60"
+	default:
+		return "60+"
+	}
+}
+
+// decadeExpr — SQL-выражение декады оценки: 79.5 → 70, 85 → 80.
+func decadeExpr(col string) string {
+	return "CAST(" + col + "/10 AS INTEGER)*10"
+}
+
+// decadeBucketLabel — подпись бакета декады оценки.
+func decadeBucketLabel(v int64) string { return strconv.FormatInt(v, 10) }
+
+// yearBucketLabel — подпись бакета года; нулевой/отсутствующий год — «—».
+func yearBucketLabel(v int64) string {
+	if v <= 0 {
+		return "—"
+	}
+	return strconv.FormatInt(v, 10)
+}
+
+// valueIndexBuckets — общий расчёт бакетов по числовому SQL-выражению expr
+// (только из белого списка, не из пользовательского ввода): строки группируются
+// по значению, сортируются как в ORDER BY выдачи (NULL в конец, значение по
+// p.Order), из счётчиков собираются кумулятивные смещения. NULL-группа чипа не
+// получает — это непокрываемый хвост выдачи.
+func valueIndexBuckets(db *sql.DB, p ListParams, expr string, label func(int64) string) ([]IndexBucket, error) {
+	NormalizeParams(&p)
+	whereSQL, args := buildListWhere(p)
+	rows, err := db.Query("SELECT "+expr+", COUNT(*) FROM games "+whereSQL+" GROUP BY 1", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type group struct {
+		v sql.NullInt64
+		n int
+	}
+	var groups []group
+	for rows.Next() {
+		var g group
+		if err := rows.Scan(&g.v, &g.n); err != nil {
+			return nil, err
+		}
+		groups = append(groups, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	desc := strings.EqualFold(p.Order, "desc")
+	sort.Slice(groups, func(i, j int) bool {
+		a, b := groups[i], groups[j]
+		if a.v.Valid != b.v.Valid {
+			return a.v.Valid // NULL всегда в конец, как (col IS NULL) в ORDER BY
+		}
+		if desc {
+			return a.v.Int64 > b.v.Int64
+		}
+		return a.v.Int64 < b.v.Int64
+	})
+
+	var buckets []IndexBucket
+	offset := 0
+	for _, g := range groups {
+		if !g.v.Valid {
+			break // NULL-хвост: чипов больше не будет
+		}
+		buckets = append(buckets, IndexBucket{Label: label(g.v.Int64), Offset: offset})
+		offset += g.n
+	}
+	return buckets, nil
+}
+
+// TitleIndexBuckets считает бакеты первого символа названия для буквенного
 // индекса. Не-латинские первые символы попадают в бакет "#", который при
 // сортировке по возрастанию идёт первым (как и в ORDER BY: цифры/символы
 // раньше букв), при убывании — последним. Пустые бакеты опускаются.
-func TitleLetterBuckets(db *sql.DB, p ListParams) ([]LetterBucket, error) {
+func TitleIndexBuckets(db *sql.DB, p ListParams) ([]IndexBucket, error) {
 	NormalizeParams(&p)
 	whereSQL, args := buildListWhere(p)
 	rows, err := db.Query(
@@ -347,14 +476,14 @@ func TitleLetterBuckets(db *sql.DB, p ListParams) ([]LetterBucket, error) {
 		}
 	}
 
-	var buckets []LetterBucket
+	var buckets []IndexBucket
 	offset := 0
 	for _, l := range order {
 		n := counts[l]
 		if n == 0 {
 			continue
 		}
-		buckets = append(buckets, LetterBucket{Letter: l, Offset: offset})
+		buckets = append(buckets, IndexBucket{Label: l, Offset: offset})
 		offset += n
 	}
 	return buckets, nil

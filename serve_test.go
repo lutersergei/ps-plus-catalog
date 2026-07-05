@@ -242,7 +242,7 @@ func TestIndexTemplateRendersLetterIndexAndMoreLink(t *testing.T) {
 		},
 		Params:     store.ListParams{Sort: "title"},
 		BaseQuery:  template.URL("sort=title&order=asc"),
-		Letters:    []store.LetterBucket{{Letter: "#", Offset: 0}, {Letter: "A", Offset: 3}},
+		Buckets:    []store.IndexBucket{{Label: "#", Offset: 0}, {Label: "A", Offset: 3}},
 		NextOffset: 24,
 		HasNext:    true,
 	}
@@ -258,6 +258,8 @@ func TestIndexTemplateRendersLetterIndexAndMoreLink(t *testing.T) {
 		`Показать ещё`,
 		`id="shownCount"`,
 		`data-next="24"`,
+		`data-total="469"`,
+		`data-start="0"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("rendered template missing %q", want)
@@ -265,6 +267,38 @@ func TestIndexTemplateRendersLetterIndexAndMoreLink(t *testing.T) {
 	}
 	if strings.Contains(body, `class="pager"`) {
 		t.Fatalf("номерная пагинация должна быть удалена")
+	}
+}
+
+func TestMoreLinkRenderedHiddenOnLastPage(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	data := pageData{
+		Result: store.ListResult{
+			Games:      []store.GameView{{ID: "g1", Title: "Game"}},
+			Total:      25,
+			Page:       2,
+			PageSize:   24,
+			TotalPages: 2,
+		},
+		BaseQuery:  template.URL("sort=title&order=asc"),
+		NextOffset: 48,
+		HasNext:    false,
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	body := buf.String()
+	// ссылка должна существовать (прыжок по индексу может снова открыть середину
+	// списка), но быть скрытой, пока дальше грузить нечего
+	if !strings.Contains(body, `id="moreLink"`) {
+		t.Fatalf("ссылка «Показать ещё» должна рендериться и на последней странице")
+	}
+	if !strings.Contains(body, `hidden`) {
+		t.Fatalf("на последней странице ссылка должна быть hidden")
 	}
 }
 
@@ -286,28 +320,35 @@ func TestIndexTemplateHidesLetterIndexWithoutBuckets(t *testing.T) {
 	}
 }
 
-func TestHandleIndexComputesLettersOnlyForTitleSort(t *testing.T) {
+func TestHandleIndexComputesBucketsPerSort(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
 	defer db.Close()
-	if err := store.UpsertGame(db, store.GameRow{ID: "g1", Title: "Alpha"}); err != nil {
+	if err := store.UpsertGame(db, store.GameRow{ID: "g1", Title: "Alpha", ReleaseYear: 2020}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-
-	tmpl := template.Must(template.New("test").Parse(`letters={{len .Letters}}`))
-
-	rec := httptest.NewRecorder()
-	handleIndex(rec, httptest.NewRequest("GET", "/?sort=title", nil), db, tmpl)
-	if !strings.Contains(rec.Body.String(), "letters=1") {
-		t.Fatalf("body=%q, ждали letters=1 при sort=title", rec.Body.String())
+	if _, err := db.Exec(`UPDATE games SET player_average_score = 85 WHERE id = 'g1'`); err != nil {
+		t.Fatalf("update: %v", err)
 	}
 
-	rec = httptest.NewRecorder()
-	handleIndex(rec, httptest.NewRequest("GET", "/?sort=player", nil), db, tmpl)
-	if !strings.Contains(rec.Body.String(), "letters=0") {
-		t.Fatalf("body=%q, ждали letters=0 при sort=player", rec.Body.String())
+	tmpl := template.Must(template.New("test").Parse(`buckets={{len .Buckets}}`))
+
+	for _, tc := range []struct {
+		sort string
+		want string
+	}{
+		{"title", "buckets=1"},
+		{"player", "buckets=1"},
+		{"year", "buckets=1"},
+		{"average", "buckets=0"}, // нет в UI — индекс не строится
+	} {
+		rec := httptest.NewRecorder()
+		handleIndex(rec, httptest.NewRequest("GET", "/?sort="+tc.sort, nil), db, tmpl)
+		if !strings.Contains(rec.Body.String(), tc.want) {
+			t.Fatalf("sort=%s: body=%q, ждали %s", tc.sort, rec.Body.String(), tc.want)
+		}
 	}
 }
 
