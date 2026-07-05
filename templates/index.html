@@ -39,7 +39,9 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.45 var(--sans); }
+/* overflow-anchor: none — компенсируем прокрутку при догрузке ленты вверх сами,
+   иначе Chrome/Firefox сделают это вторым слоем и страница «прыгнет» дважды */
+body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.45 var(--sans); overflow-anchor: none; }
 a { color: var(--cobalt); }
 :focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; border-radius: 4px; }
 
@@ -557,7 +559,7 @@ a.more { text-decoration: none; }
 
 {{if .Result.Games}}
 <div class="catalog">
-  <div class="grid" data-next="{{.NextOffset}}" data-psize="{{.Result.PageSize}}" data-total="{{.Result.Total}}">{{template "cards" .}}</div>
+  <div class="grid" data-start="{{mul (add .Result.Page -1) .Result.PageSize}}" data-next="{{.NextOffset}}" data-psize="{{.Result.PageSize}}" data-total="{{.Result.Total}}">{{template "cards" .}}</div>
   {{if .Buckets}}
   <nav class="alpha" aria-label="Быстрый переход по алфавиту">
     {{$bq := .BaseQuery}}
@@ -645,7 +647,10 @@ document.addEventListener('click', function (e) {
   if (!grid) return;
   var psize = +grid.dataset.psize || 24;
   var total = +grid.dataset.total || 0;
-  var inflight = false;
+  var start = +grid.dataset.start || 0; // начало загруженного окна
+  var inflight = false;   // запрос вниз/прыжок
+  var upInflight = false; // запрос вверх
+  var gen = 0;            // поколение ленты: прыжок обесценивает старые ответы
   var smooth = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
 
   function setOffsetParam(url, off) {
@@ -691,13 +696,15 @@ document.addEventListener('click', function (e) {
   function loadNext() {
     if (inflight || !more || more.hidden) return;
     inflight = true;
+    var g = gen;
     var next = +grid.dataset.next;
     fetchCards(next).then(function (cards) {
+      if (g !== gen) { inflight = false; return; } // лента перестроена прыжком
       appendCards(cards);
       var after = next + cards.length;
       grid.dataset.next = after;
       setMore(cards.length ? after : total); // пустой ответ — считаем концом
-      syncURL(next);
+      syncURL(start);
       inflight = false;
     }).catch(function () { inflight = false; }); // ссылка остаётся — ручной retry
   }
@@ -707,6 +714,33 @@ document.addEventListener('click', function (e) {
     }, { rootMargin: '400px' }).observe(more);
     more.addEventListener('click', function (e) { e.preventDefault(); loadNext(); });
   }
+
+  /* Догрузка предыдущей партии при прокрутке к верху загруженного окна.
+     Вставка контента над вьюпортом сдвигает страницу — компенсируем scrollBy
+     на разницу высоты сетки (нативный anchoring выключен в CSS). */
+  function loadPrev() {
+    if (upInflight || start <= 0) return;
+    upInflight = true;
+    var g = gen;
+    var prev = Math.max(0, start - psize);
+    fetchCards(prev).then(function (cards) {
+      if (g !== gen) { upInflight = false; return; }
+      var h0 = grid.offsetHeight;
+      for (var i = cards.length - 1; i >= 0; i--) grid.insertBefore(cards[i], grid.firstChild);
+      window.scrollBy(0, grid.offsetHeight - h0);
+      updateCount();
+      start = prev;
+      grid.dataset.start = start;
+      syncURL(start);
+      upInflight = false;
+    }).catch(function () { upInflight = false; });
+  }
+  var topGuard = document.createElement('div');
+  var catalog = grid.closest('.catalog') || grid;
+  catalog.parentNode.insertBefore(topGuard, catalog);
+  new IntersectionObserver(function (es) {
+    if (es[0].isIntersecting) loadPrev();
+  }, { rootMargin: '400px' }).observe(topGuard);
 
   /* Прыжок по букве: скролл, если карточка в DOM; иначе перестройка ленты */
   var alpha = document.querySelector('.alpha');
@@ -723,12 +757,17 @@ document.addEventListener('click', function (e) {
     }
     if (inflight) return;
     inflight = true;
+    gen++; // обесценить ответы старой позиции ленты
+    var g = gen;
     var aligned = off - off % psize;
     fetchCards(aligned).then(function (cards) {
+      if (g !== gen) { inflight = false; return; }
       grid.innerHTML = '';
       appendCards(cards);
       var after = aligned + cards.length;
       grid.dataset.next = after;
+      start = aligned;
+      grid.dataset.start = start;
       setMore(after);
       syncURL(aligned);
       var t2 = grid.querySelector('[data-i="' + off + '"]');

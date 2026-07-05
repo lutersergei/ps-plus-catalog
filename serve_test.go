@@ -259,6 +259,7 @@ func TestIndexTemplateRendersLetterIndexAndMoreLink(t *testing.T) {
 		`id="shownCount"`,
 		`data-next="24"`,
 		`data-total="469"`,
+		`data-start="0"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("rendered template missing %q", want)
