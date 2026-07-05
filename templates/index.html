@@ -449,10 +449,10 @@ a.h:hover { color: var(--cobalt); }
   <a class="reset" href="?">Сбросить</a>
 </form>
 
-{{if .Result.Games}}
-<div class="grid">
-  {{range .Result.Games}}
-  <div class="gcard">
+{{define "cards"}}
+{{$base := mul (add .Result.Page -1) .Result.PageSize}}
+{{range $idx, $g := .Result.Games}}
+  <div class="gcard" data-i="{{add $base $idx}}">
     <div class="cover">
       {{if .ImageURL}}<img loading="lazy" src="{{.ImageURL}}" alt="">{{end}}
       {{if or .RuSub .RuVoice}}
@@ -541,8 +541,11 @@ a.h:hover { color: var(--cobalt); }
       {{end}}
     </div>
   </div>
-  {{end}}
-</div>
+{{end}}
+{{end}}
+
+{{if .Result.Games}}
+<div class="grid">{{template "cards" .}}</div>
 
 <nav class="pager" aria-label="Страницы">
   {{$cur := .Result.Page}}{{$bq := .BaseQuery}}{{$tp := .Result.TotalPages}}

@@ -37,6 +37,7 @@ const (
 func newIndexTemplate() (*template.Template, error) {
 	return template.New("index").Funcs(template.FuncMap{
 		"add":        func(a, b int) int { return a + b },
+		"mul":        func(a, b int) int { return a * b },
 		"scoreClass": scoreClass,
 		"fmtCount":   fmtCount,
 		"hltbPct":    hltbPct,
@@ -238,6 +239,18 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 		http.Error(w, "внутренняя ошибка сервера", http.StatusInternalServerError)
 		return
 	}
+
+	// Режим фрагмента: только карточки для бесконечной ленты. Общее число —
+	// в заголовке, чтобы клиент обновлял счётчик без парсинга HTML.
+	if q.Get("fragment") == "cards" {
+		w.Header().Set("X-Total", strconv.Itoa(result.Total))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if err := tmpl.ExecuteTemplate(w, "cards", pageData{Result: result}); err != nil {
+			log.Printf("render fragment: %v", err)
+		}
+		return
+	}
+
 	years, err := store.DistinctYears(db)
 	if err != nil {
 		log.Printf("distinct years: %v", err)

@@ -42,6 +42,62 @@ func TestHandleIndexOffsetParamOverridesPage(t *testing.T) {
 	}
 }
 
+func TestFragmentRendersOnlyCardsWithTotalHeader(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	for i := 1; i <= 30; i++ {
+		id := fmt.Sprintf("g%02d", i)
+		if err := store.UpsertGame(db, store.GameRow{ID: id, Title: fmt.Sprintf("G%02d", i)}); err != nil {
+			t.Fatalf("upsert: %v", err)
+		}
+	}
+
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	req := httptest.NewRequest("GET", "/?fragment=cards&offset=24&sort=title&order=asc", nil)
+	rec := httptest.NewRecorder()
+
+	handleIndex(rec, req, db, tmpl)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="gcard"`) || strings.Contains(body, "<form") || strings.Contains(body, "<head>") {
+		t.Fatalf("фрагмент должен содержать только карточки, body[:200]=%q", body[:min(200, len(body))])
+	}
+	if got := rec.Header().Get("X-Total"); got != "30" {
+		t.Fatalf("X-Total=%q, ждали 30", got)
+	}
+	// вторая партия начинается с глобального номера 24
+	if !strings.Contains(body, `data-i="24"`) {
+		t.Fatalf("нет data-i=24 в теле фрагмента")
+	}
+}
+
+func TestFullPageCardsCarryDataIndex(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	data := pageData{
+		Result: store.ListResult{
+			Games:    []store.GameView{{ID: "g1", Title: "Game"}},
+			Page:     3,
+			PageSize: 24,
+		},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(buf.String(), `data-i="48"`) {
+		t.Fatalf("карточка на странице 3 должна иметь data-i=48")
+	}
+}
+
 func TestHandleIndexParsesCriticAndPlayerFilters(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
