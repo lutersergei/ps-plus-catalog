@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"database/sql"
+	"fmt"
 	"html/template"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,6 +12,91 @@ import (
 
 	"github.com/lutersergei/ps-plus-catalog/internal/store"
 )
+
+func TestHandleIndexOffsetParamOverridesPage(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	// 30 игр: G01..G30 — при pageSize 24 offset=24 начинает с G25.
+	for i := 1; i <= 30; i++ {
+		id := fmt.Sprintf("g%02d", i)
+		title := fmt.Sprintf("G%02d", i)
+		if err := store.UpsertGame(db, store.GameRow{ID: id, Title: title}); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+	}
+
+	tmpl := template.Must(template.New("test").Parse(
+		`first={{(index .Result.Games 0).Title}} page={{.Result.Page}}`))
+	req := httptest.NewRequest("GET", "/?offset=24&page=1&sort=title&order=asc", nil)
+	rec := httptest.NewRecorder()
+
+	handleIndex(rec, req, db, tmpl)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "first=G25") || !strings.Contains(body, "page=2") {
+		t.Fatalf("body=%q, ждали first=G25 page=2 (offset приоритетнее page)", body)
+	}
+}
+
+func TestFragmentRendersOnlyCardsWithTotalHeader(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	for i := 1; i <= 30; i++ {
+		id := fmt.Sprintf("g%02d", i)
+		if err := store.UpsertGame(db, store.GameRow{ID: id, Title: fmt.Sprintf("G%02d", i)}); err != nil {
+			t.Fatalf("upsert: %v", err)
+		}
+	}
+
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	req := httptest.NewRequest("GET", "/?fragment=cards&offset=24&sort=title&order=asc", nil)
+	rec := httptest.NewRecorder()
+
+	handleIndex(rec, req, db, tmpl)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `class="gcard"`) || strings.Contains(body, "<form") || strings.Contains(body, "<head>") {
+		t.Fatalf("фрагмент должен содержать только карточки, body[:200]=%q", body[:min(200, len(body))])
+	}
+	if got := rec.Header().Get("X-Total"); got != "30" {
+		t.Fatalf("X-Total=%q, ждали 30", got)
+	}
+	// вторая партия начинается с глобального номера 24
+	if !strings.Contains(body, `data-i="24"`) {
+		t.Fatalf("нет data-i=24 в теле фрагмента")
+	}
+}
+
+func TestFullPageCardsCarryDataIndex(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	data := pageData{
+		Result: store.ListResult{
+			Games:    []store.GameView{{ID: "g1", Title: "Game"}},
+			Page:     3,
+			PageSize: 24,
+		},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(buf.String(), `data-i="48"`) {
+		t.Fatalf("карточка на странице 3 должна иметь data-i=48")
+	}
+}
 
 func TestHandleIndexParsesCriticAndPlayerFilters(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -141,43 +227,87 @@ func TestIndexTemplateExcludedOCPlayerShowsDashWithVotes(t *testing.T) {
 	}
 }
 
-func TestIndexTemplateRendersPagerWindow(t *testing.T) {
+func TestIndexTemplateRendersLetterIndexAndMoreLink(t *testing.T) {
 	tmpl, err := newIndexTemplate()
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-
 	data := pageData{
 		Result: store.ListResult{
-			Games: []store.GameView{{
-				ID:    "g1",
-				Title: "Game",
-			}},
-			Page:       7,
+			Games:      []store.GameView{{ID: "g1", Title: "Game"}},
+			Total:      469,
+			Page:       1,
+			PageSize:   24,
 			TotalPages: 20,
 		},
-		BaseQuery: template.URL("sort=title&order=asc"),
-		Pages:     []int{3, 4, 5, 6, 7, 8, 9, 10, 11},
-		HasPrev:   true,
-		HasNext:   true,
+		Params:     store.ListParams{Sort: "title"},
+		BaseQuery:  template.URL("sort=title&order=asc"),
+		Letters:    []store.LetterBucket{{Letter: "#", Offset: 0}, {Letter: "A", Offset: 3}},
+		NextOffset: 24,
+		HasNext:    true,
 	}
-
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
 	body := buf.String()
 	for _, want := range []string{
-		`href="?sort=title&amp;order=asc&page=6">‹</a>`,
-		`href="?sort=title&amp;order=asc&page=8">›</a>`,
-		`class="cur">7</span>`,
-		// окно не с первой страницы и не до последней — есть короткие ссылки на края
-		`&page=1">1</a>`,
-		`&page=20">20</a>`,
+		`class="achip" data-offset="3"`,
+		`id="moreLink"`,
+		`offset=24`,
+		`Показать ещё`,
+		`id="shownCount"`,
+		`data-next="24"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("rendered template missing %q", want)
 		}
+	}
+	if strings.Contains(body, `class="pager"`) {
+		t.Fatalf("номерная пагинация должна быть удалена")
+	}
+}
+
+func TestIndexTemplateHidesLetterIndexWithoutBuckets(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	data := pageData{
+		Result: store.ListResult{Games: []store.GameView{{ID: "g1", Title: "Game"}}},
+		Params: store.ListParams{Sort: "player"},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if strings.Contains(buf.String(), `class="achip"`) {
+		t.Fatalf("индекс не должен рендериться без бакетов")
+	}
+}
+
+func TestHandleIndexComputesLettersOnlyForTitleSort(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	if err := store.UpsertGame(db, store.GameRow{ID: "g1", Title: "Alpha"}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	tmpl := template.Must(template.New("test").Parse(`letters={{len .Letters}}`))
+
+	rec := httptest.NewRecorder()
+	handleIndex(rec, httptest.NewRequest("GET", "/?sort=title", nil), db, tmpl)
+	if !strings.Contains(rec.Body.String(), "letters=1") {
+		t.Fatalf("body=%q, ждали letters=1 при sort=title", rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	handleIndex(rec, httptest.NewRequest("GET", "/?sort=player", nil), db, tmpl)
+	if !strings.Contains(rec.Body.String(), "letters=0") {
+		t.Fatalf("body=%q, ждали letters=0 при sort=player", rec.Body.String())
 	}
 }
 

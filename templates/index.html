@@ -303,23 +303,34 @@ a.h:hover { color: var(--cobalt); }
 @media (prefers-reduced-motion: reduce) { .ruler i { animation: none; } }
 .omark { font-size: 9px; color: var(--cobalt); margin-left: -4px; }
 
-/* ---------- Пагинация ---------- */
-.pager {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  justify-content: center; align-items: center;
-  padding: 14px 0;
-  font-family: var(--mono); font-size: 13px;
+/* ---------- Лента и буквенный индекс ---------- */
+.catalog { display: flex; gap: 14px; align-items: flex-start; padding: 22px 0; }
+.catalog .grid { flex: 1; padding: 0; }
+.alpha {
+  position: sticky; top: 12px;
+  display: flex; flex-direction: column; gap: 3px;
+  max-height: calc(100vh - 24px); overflow-y: auto;
 }
-.pager a, .pager span {
-  min-width: 34px; text-align: center;
-  padding: 7px 9px;
-  border: 1px solid var(--line); border-radius: 7px;
-  background: var(--card); color: var(--ink);
-  text-decoration: none;
+.achip {
+  min-width: 26px; text-align: center;
+  padding: 4px 6px;
+  border: 1px solid var(--line-soft); border-radius: 6px;
+  background: var(--card);
+  font: 700 11px var(--mono);
+  color: var(--muted); text-decoration: none;
 }
-.pager .cur { background: var(--cobalt); border-color: var(--cobalt); color: var(--paper); }
-.pager .dis { opacity: .4; }
-.pager .gap { border: none; background: none; color: var(--faint); }
+.achip:hover { color: var(--cobalt); border-color: var(--cobalt); }
+.achip.on { background: var(--cobalt); border-color: var(--cobalt); color: var(--paper); }
+.morewrap { display: flex; justify-content: center; padding: 4px 0 14px; }
+a.more { text-decoration: none; }
+@media (max-width: 1200px) {
+  .catalog { display: block; }
+  .alpha {
+    position: static; flex-direction: row;
+    overflow-x: auto; max-height: none;
+    margin-top: 14px; padding-bottom: 4px;
+  }
+}
 .pcount { text-align: center; color: var(--muted); font-size: 12px; padding-bottom: 50px; }
 .pcount b { font-family: var(--mono); color: var(--ink); }
 
@@ -449,10 +460,10 @@ a.h:hover { color: var(--cobalt); }
   <a class="reset" href="?">Сбросить</a>
 </form>
 
-{{if .Result.Games}}
-<div class="grid">
-  {{range .Result.Games}}
-  <div class="gcard">
+{{define "cards"}}
+{{$base := mul (add .Result.Page -1) .Result.PageSize}}
+{{range $idx, $g := .Result.Games}}
+  <div class="gcard" data-i="{{add $base $idx}}">
     <div class="cover">
       {{if .ImageURL}}<img loading="lazy" src="{{.ImageURL}}" alt="">{{end}}
       {{if or .RuSub .RuVoice}}
@@ -541,24 +552,26 @@ a.h:hover { color: var(--cobalt); }
       {{end}}
     </div>
   </div>
+{{end}}
+{{end}}
+
+{{if .Result.Games}}
+<div class="catalog">
+  <div class="grid" data-next="{{.NextOffset}}" data-psize="{{.Result.PageSize}}">{{template "cards" .}}</div>
+  {{if .Letters}}
+  <nav class="alpha" aria-label="Быстрый переход по алфавиту">
+    {{$bq := .BaseQuery}}
+    {{range .Letters}}<a class="achip" data-offset="{{.Offset}}" href="?{{$bq}}&offset={{.Offset}}">{{.Letter}}</a>{{end}}
+  </nav>
   {{end}}
 </div>
 
-<nav class="pager" aria-label="Страницы">
-  {{$cur := .Result.Page}}{{$bq := .BaseQuery}}{{$tp := .Result.TotalPages}}
-  {{if .HasPrev}}<a href="?{{$bq}}&page={{add $cur -1}}">‹</a>{{else}}<span class="dis">‹</span>{{end}}
-  {{if .Pages}}
-    {{$first := index .Pages 0}}
-    {{if gt $first 1}}<a href="?{{$bq}}&page=1">1</a>{{if gt $first 2}}<span class="gap">…</span>{{end}}{{end}}
-    {{range .Pages}}
-      {{if eq . $cur}}<span class="cur">{{.}}</span>{{else}}<a href="?{{$bq}}&page={{.}}">{{.}}</a>{{end}}
-    {{end}}
-    {{$last := index .Pages (add (len .Pages) -1)}}
-    {{if lt $last $tp}}{{if lt $last (add $tp -1)}}<span class="gap">…</span>{{end}}<a href="?{{$bq}}&page={{$tp}}">{{$tp}}</a>{{end}}
-  {{end}}
-  {{if .HasNext}}<a href="?{{$bq}}&page={{add $cur 1}}">›</a>{{else}}<span class="dis">›</span>{{end}}
-</nav>
-<div class="pcount">Страница <b>{{.Result.Page}}</b> из <b>{{.Result.TotalPages}}</b> · показано <b>{{len .Result.Games}}</b> из <b>{{.Result.Total}}</b> игр</div>
+{{if .HasNext}}
+<div class="morewrap">
+  <a class="btn more" id="moreLink" href="?{{.BaseQuery}}&offset={{.NextOffset}}">Показать ещё</a>
+</div>
+{{end}}
+<div class="pcount">Показано <b id="shownCount">{{len .Result.Games}}</b> из <b id="totalCount">{{.Result.Total}}</b> игр</div>
 
 {{else}}
 <div class="empty">
@@ -623,6 +636,127 @@ document.addEventListener('click', function (e) {
     if (!d.contains(e.target)) d.removeAttribute('open');
   });
 });
+
+/* Бесконечная лента и буквенный индекс */
+(function () {
+  var grid = document.querySelector('.grid');
+  var more = document.getElementById('moreLink');
+  var shown = document.getElementById('shownCount');
+  if (!grid) return;
+  var psize = +grid.dataset.psize || 24;
+  var inflight = false;
+  var smooth = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+
+  function setOffsetParam(url, off) {
+    return url.replace(/([?&])offset=\d+/, '$1offset=' + off);
+  }
+  function updateCount() {
+    if (shown) shown.textContent = grid.children.length;
+  }
+  function fetchCards(off) {
+    var base = more ? more.href : (location.pathname + location.search);
+    var url = /[?&]offset=/.test(base)
+      ? setOffsetParam(base, off)
+      : base + (base.indexOf('?') < 0 ? '?' : '&') + 'offset=' + off;
+    return fetch(url + '&fragment=cards').then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.text();
+    }).then(function (html) {
+      var t = document.createElement('template');
+      t.innerHTML = html;
+      return t.content.querySelectorAll('.gcard');
+    });
+  }
+  function appendCards(cards) {
+    for (var i = 0; i < cards.length; i++) grid.appendChild(cards[i]);
+    updateCount();
+  }
+  function syncURL(off) {
+    var u = new URL(location.href);
+    u.searchParams.set('offset', off);
+    history.replaceState(null, '', u);
+  }
+  function endOfList() {
+    if (more) { more.parentNode.removeChild(more); more = null; }
+  }
+
+  /* Подгрузка следующей партии, когда «Показать ещё» приближается к вьюпорту */
+  function loadNext() {
+    if (inflight || !more) return;
+    inflight = true;
+    var next = +grid.dataset.next;
+    fetchCards(next).then(function (cards) {
+      appendCards(cards);
+      grid.dataset.next = next + cards.length;
+      if (cards.length < psize) { endOfList(); }
+      else { more.href = setOffsetParam(more.href, next + cards.length); }
+      syncURL(next);
+      inflight = false;
+    }).catch(function () { inflight = false; }); // ссылка остаётся — ручной retry
+  }
+  if (more) {
+    new IntersectionObserver(function (es) {
+      if (es[0].isIntersecting) loadNext();
+    }, { rootMargin: '400px' }).observe(more);
+    more.addEventListener('click', function (e) { e.preventDefault(); loadNext(); });
+  }
+
+  /* Прыжок по букве: скролл, если карточка в DOM; иначе перестройка ленты */
+  var alpha = document.querySelector('.alpha');
+  if (alpha) alpha.addEventListener('click', function (e) {
+    var chip = e.target.closest('.achip');
+    if (!chip) return;
+    e.preventDefault();
+    var off = +chip.dataset.offset;
+    var target = grid.querySelector('[data-i="' + off + '"]');
+    if (target) {
+      target.scrollIntoView({ behavior: smooth, block: 'start' });
+      syncURL(off - off % psize);
+      return;
+    }
+    if (inflight) return;
+    inflight = true;
+    var aligned = off - off % psize;
+    fetchCards(aligned).then(function (cards) {
+      grid.innerHTML = '';
+      appendCards(cards);
+      grid.dataset.next = aligned + cards.length;
+      if (more) {
+        if (cards.length < psize) endOfList();
+        else more.href = setOffsetParam(more.href, aligned + cards.length);
+      }
+      syncURL(aligned);
+      var t2 = grid.querySelector('[data-i="' + off + '"]');
+      if (t2) t2.scrollIntoView({ behavior: smooth, block: 'start' });
+      inflight = false;
+    }).catch(function () { inflight = false; });
+  });
+
+  /* Подсветка активной буквы по первой видимой карточке */
+  var chips = alpha ? Array.prototype.slice.call(alpha.querySelectorAll('.achip')) : [];
+  function markActive() {
+    if (!chips.length) return;
+    var cards = grid.children;
+    var topCard = null;
+    for (var i = 0; i < cards.length; i++) {
+      if (cards[i].getBoundingClientRect().bottom > 0) { topCard = cards[i]; break; }
+    }
+    if (!topCard) return;
+    var idx = +topCard.dataset.i;
+    var active = null;
+    for (var j = 0; j < chips.length; j++) {
+      if (+chips[j].dataset.offset <= idx) active = chips[j];
+    }
+    chips.forEach(function (c) { c.classList.toggle('on', c === active); });
+  }
+  var ticking = false;
+  addEventListener('scroll', function () {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () { markActive(); ticking = false; });
+  }, { passive: true });
+  markActive();
+})();
 </script>
 </body>
 </html>

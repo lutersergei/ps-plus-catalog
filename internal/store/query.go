@@ -165,7 +165,7 @@ var sortColumns = map[string]string{
 	"average":  "average_score",
 	"critic":   "critic_average_score",
 	"player":   "player_average_score",
-	"title":    "title",
+	"title":    "title COLLATE NOCASE",
 	"hltbmain": "hltb_main_extra",
 }
 
@@ -220,11 +220,10 @@ func NormalizeParams(p *ListParams) {
 	}
 }
 
-// ListGames возвращает отфильтрованную, отсортированную и постранично нарезанную
-// выборку игр.
-func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
-	NormalizeParams(&p)
-
+// buildListWhere собирает WHERE-условия и аргументы выборки по параметрам.
+// Используется списком игр и расчётом буквенных бакетов, чтобы фильтры
+// гарантированно совпадали.
+func buildListWhere(p ListParams) (string, []any) {
 	where := []string{"active = 1"}
 	var args []any
 
@@ -298,10 +297,75 @@ func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
 		where = append(where, `spoken_langs LIKE '%"ru"%'`)
 	}
 
-	whereSQL := ""
-	if len(where) > 0 {
-		whereSQL = "WHERE " + strings.Join(where, " AND ")
+	return "WHERE " + strings.Join(where, " AND "), args
+}
+
+// LetterBucket — бакет буквенного индекса: буква и смещение первой строки
+// с этой буквы в текущей выборке.
+type LetterBucket struct {
+	Letter string
+	Offset int
+}
+
+// TitleLetterBuckets считает бакеты первого символа названия для буквенного
+// индекса. Не-латинские первые символы попадают в бакет "#", который при
+// сортировке по возрастанию идёт первым (как и в ORDER BY: цифры/символы
+// раньше букв), при убывании — последним. Пустые бакеты опускаются.
+func TitleLetterBuckets(db *sql.DB, p ListParams) ([]LetterBucket, error) {
+	NormalizeParams(&p)
+	whereSQL, args := buildListWhere(p)
+	rows, err := db.Query(
+		"SELECT UPPER(SUBSTR(title,1,1)), COUNT(*) FROM games "+whereSQL+" GROUP BY 1", args...)
+	if err != nil {
+		return nil, err
 	}
+	defer rows.Close()
+
+	counts := make(map[string]int)
+	for rows.Next() {
+		var l string
+		var n int
+		if err := rows.Scan(&l, &n); err != nil {
+			return nil, err
+		}
+		if len(l) != 1 || l[0] < 'A' || l[0] > 'Z' {
+			l = "#"
+		}
+		counts[l] += n
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	order := []string{"#"}
+	for c := byte('A'); c <= 'Z'; c++ {
+		order = append(order, string(c))
+	}
+	if strings.EqualFold(p.Order, "desc") {
+		for i, j := 0, len(order)-1; i < j; i, j = i+1, j-1 {
+			order[i], order[j] = order[j], order[i]
+		}
+	}
+
+	var buckets []LetterBucket
+	offset := 0
+	for _, l := range order {
+		n := counts[l]
+		if n == 0 {
+			continue
+		}
+		buckets = append(buckets, LetterBucket{Letter: l, Offset: offset})
+		offset += n
+	}
+	return buckets, nil
+}
+
+// ListGames возвращает отфильтрованную, отсортированную и постранично нарезанную
+// выборку игр.
+func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
+	NormalizeParams(&p)
+
+	whereSQL, args := buildListWhere(p)
 
 	res := ListResult{Page: p.Page, PageSize: p.PageSize}
 
@@ -325,7 +389,7 @@ func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
 		dir = "DESC"
 	}
 	// игры без значения сортируемой колонки — всегда в конец
-	orderSQL := fmt.Sprintf("ORDER BY (%s IS NULL), %s %s, title ASC", col, col, dir)
+	orderSQL := fmt.Sprintf("ORDER BY (%s IS NULL), %s %s, title COLLATE NOCASE ASC", col, col, dir)
 
 	query := `
 SELECT id, title, COALESCE(title_en,''), COALESCE(release_year,0), COALESCE(platforms,''), COALESCE(image_url,''),
