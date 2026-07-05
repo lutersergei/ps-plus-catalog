@@ -254,3 +254,40 @@ func TestIndexBucketsPlayerDecades(t *testing.T) {
 	}
 	assertBuckets(t, got, []IndexBucket{{"90", 0}})
 }
+
+func TestIndexBucketsHLTBThresholds(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	for _, g := range []GameRow{
+		{ID: "g1", Title: "A"},
+		{ID: "g2", Title: "B"},
+		{ID: "g3", Title: "C"},
+		{ID: "g4", Title: "D"}, // без времени — NULL-хвост
+	} {
+		if err := UpsertGame(db, g); err != nil {
+			t.Fatalf("upsert %s: %v", g.ID, err)
+		}
+	}
+	// 3 ч, 15 ч и 65 ч (в секундах)
+	for id, hours := range map[string]int{"g1": 3, "g2": 15, "g3": 65} {
+		if _, err := db.Exec(`UPDATE games SET hltb_main_extra = ? WHERE id = ?`, hours*3600, id); err != nil {
+			t.Fatalf("update %s: %v", id, err)
+		}
+	}
+
+	got, err := IndexBuckets(db, ListParams{Sort: "hltbmain", Order: "asc"})
+	if err != nil {
+		t.Fatalf("buckets: %v", err)
+	}
+	assertBuckets(t, got, []IndexBucket{{"0–5", 0}, {"10–20", 1}, {"60+", 2}})
+
+	got, err = IndexBuckets(db, ListParams{Sort: "hltbmain", Order: "desc"})
+	if err != nil {
+		t.Fatalf("buckets desc: %v", err)
+	}
+	assertBuckets(t, got, []IndexBucket{{"60+", 0}, {"10–20", 1}, {"0–5", 2}})
+}

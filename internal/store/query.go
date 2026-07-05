@@ -329,8 +329,40 @@ func IndexBuckets(db *sql.DB, p ListParams) ([]IndexBucket, error) {
 		return valueIndexBuckets(db, p, decadeExpr("critic_average_score"), decadeBucketLabel)
 	case "player":
 		return valueIndexBuckets(db, p, decadeExpr("player_average_score"), decadeBucketLabel)
+	case "hltbmain":
+		return valueIndexBuckets(db, p, hltbThresholdExpr, hltbBucketLabel)
 	default:
 		return nil, nil
+	}
+}
+
+// hltbThresholdExpr — нижняя граница диапазона времени прохождения в часах.
+// Пороги неравномерные: коротких игр в каталоге больше, поэтому шаг в начале
+// шкалы мельче (0/5/10/20/40/60+).
+const hltbThresholdExpr = `CASE
+  WHEN hltb_main_extra IS NULL THEN NULL
+  WHEN hltb_main_extra < 5*3600 THEN 0
+  WHEN hltb_main_extra < 10*3600 THEN 5
+  WHEN hltb_main_extra < 20*3600 THEN 10
+  WHEN hltb_main_extra < 40*3600 THEN 20
+  WHEN hltb_main_extra < 60*3600 THEN 40
+  ELSE 60 END`
+
+// hltbBucketLabel — подпись диапазона времени по его нижней границе.
+func hltbBucketLabel(v int64) string {
+	switch v {
+	case 0:
+		return "0–5"
+	case 5:
+		return "5–10"
+	case 10:
+		return "10–20"
+	case 20:
+		return "20–40"
+	case 40:
+		return "40–60"
+	default:
+		return "60+"
 	}
 }
 
