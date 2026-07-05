@@ -264,15 +264,13 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 		return
 	}
 
-	// Буквенный индекс имеет смысл только при сортировке по названию.
-	var buckets []store.IndexBucket
-	if p.Sort == "title" {
-		buckets, err = store.TitleIndexBuckets(db, p)
-		if err != nil {
-			log.Printf("letter buckets: %v", err)
-			http.Error(w, "внутренняя ошибка сервера", http.StatusInternalServerError)
-			return
-		}
+	// Индекс быстрого перехода: буквы, годы, декады оценок или пороги времени —
+	// в зависимости от активной сортировки (nil, если индекс не строится).
+	buckets, err := store.IndexBuckets(db, p)
+	if err != nil {
+		log.Printf("index buckets: %v", err)
+		http.Error(w, "внутренняя ошибка сервера", http.StatusInternalServerError)
+		return
 	}
 
 	// BaseQuery — query без page, для ссылок пагинации

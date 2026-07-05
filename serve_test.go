@@ -286,28 +286,35 @@ func TestIndexTemplateHidesLetterIndexWithoutBuckets(t *testing.T) {
 	}
 }
 
-func TestHandleIndexComputesLettersOnlyForTitleSort(t *testing.T) {
+func TestHandleIndexComputesBucketsPerSort(t *testing.T) {
 	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
 	defer db.Close()
-	if err := store.UpsertGame(db, store.GameRow{ID: "g1", Title: "Alpha"}); err != nil {
+	if err := store.UpsertGame(db, store.GameRow{ID: "g1", Title: "Alpha", ReleaseYear: 2020}); err != nil {
 		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE games SET player_average_score = 85 WHERE id = 'g1'`); err != nil {
+		t.Fatalf("update: %v", err)
 	}
 
 	tmpl := template.Must(template.New("test").Parse(`buckets={{len .Buckets}}`))
 
-	rec := httptest.NewRecorder()
-	handleIndex(rec, httptest.NewRequest("GET", "/?sort=title", nil), db, tmpl)
-	if !strings.Contains(rec.Body.String(), "buckets=1") {
-		t.Fatalf("body=%q, ждали buckets=1 при sort=title", rec.Body.String())
-	}
-
-	rec = httptest.NewRecorder()
-	handleIndex(rec, httptest.NewRequest("GET", "/?sort=player", nil), db, tmpl)
-	if !strings.Contains(rec.Body.String(), "buckets=0") {
-		t.Fatalf("body=%q, ждали buckets=0 при sort=player", rec.Body.String())
+	for _, tc := range []struct {
+		sort string
+		want string
+	}{
+		{"title", "buckets=1"},
+		{"player", "buckets=1"},
+		{"year", "buckets=1"},
+		{"average", "buckets=0"}, // нет в UI — индекс не строится
+	} {
+		rec := httptest.NewRecorder()
+		handleIndex(rec, httptest.NewRequest("GET", "/?sort="+tc.sort, nil), db, tmpl)
+		if !strings.Contains(rec.Body.String(), tc.want) {
+			t.Fatalf("sort=%s: body=%q, ждали %s", tc.sort, rec.Body.String(), tc.want)
+		}
 	}
 }
 
