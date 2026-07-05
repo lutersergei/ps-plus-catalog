@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/lutersergei/ps-plus-catalog/internal/scores"
@@ -307,11 +309,87 @@ func buildListWhere(p ListParams) (string, []any) {
 	return "WHERE " + strings.Join(where, " AND "), args
 }
 
-// IndexBucket — бакет буквенного индекса: буква и смещение первой строки
-// с этой буквы в текущей выборке.
+// IndexBucket — бакет индекса быстрого перехода: подпись чипа и смещение
+// первой строки бакета в текущей выборке.
 type IndexBucket struct {
 	Label  string
 	Offset int
+}
+
+// IndexBuckets возвращает бакеты индекса быстрого перехода для активной
+// сортировки: буквы для title, годы для year, декады оценок для critic/player,
+// пороги часов для hltbmain. Для прочих сортировок индекс не строится (nil).
+func IndexBuckets(db *sql.DB, p ListParams) ([]IndexBucket, error) {
+	switch p.Sort {
+	case "title":
+		return TitleIndexBuckets(db, p)
+	case "year":
+		return valueIndexBuckets(db, p, "release_year", yearBucketLabel)
+	default:
+		return nil, nil
+	}
+}
+
+// yearBucketLabel — подпись бакета года; нулевой/отсутствующий год — «—».
+func yearBucketLabel(v int64) string {
+	if v <= 0 {
+		return "—"
+	}
+	return strconv.FormatInt(v, 10)
+}
+
+// valueIndexBuckets — общий расчёт бакетов по числовому SQL-выражению expr
+// (только из белого списка, не из пользовательского ввода): строки группируются
+// по значению, сортируются как в ORDER BY выдачи (NULL в конец, значение по
+// p.Order), из счётчиков собираются кумулятивные смещения. NULL-группа чипа не
+// получает — это непокрываемый хвост выдачи.
+func valueIndexBuckets(db *sql.DB, p ListParams, expr string, label func(int64) string) ([]IndexBucket, error) {
+	NormalizeParams(&p)
+	whereSQL, args := buildListWhere(p)
+	rows, err := db.Query("SELECT "+expr+", COUNT(*) FROM games "+whereSQL+" GROUP BY 1", args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type group struct {
+		v sql.NullInt64
+		n int
+	}
+	var groups []group
+	for rows.Next() {
+		var g group
+		if err := rows.Scan(&g.v, &g.n); err != nil {
+			return nil, err
+		}
+		groups = append(groups, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	desc := strings.EqualFold(p.Order, "desc")
+	sort.Slice(groups, func(i, j int) bool {
+		a, b := groups[i], groups[j]
+		if a.v.Valid != b.v.Valid {
+			return a.v.Valid // NULL всегда в конец, как (col IS NULL) в ORDER BY
+		}
+		if desc {
+			return a.v.Int64 > b.v.Int64
+		}
+		return a.v.Int64 < b.v.Int64
+	})
+
+	var buckets []IndexBucket
+	offset := 0
+	for _, g := range groups {
+		if !g.v.Valid {
+			break // NULL-хвост: чипов больше не будет
+		}
+		buckets = append(buckets, IndexBucket{Label: label(g.v.Int64), Offset: offset})
+		offset += g.n
+	}
+	return buckets, nil
 }
 
 // TitleIndexBuckets считает бакеты первого символа названия для буквенного

@@ -130,3 +130,70 @@ func TestTitleIndexBucketsRespectsFilters(t *testing.T) {
 		t.Fatalf("got %+v, ждали %+v (фильтр по году должен применяться)", got, want)
 	}
 }
+
+func TestIndexBucketsYearAscDescAndZeroYear(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	for _, g := range []GameRow{
+		{ID: "g1", Title: "A", ReleaseYear: 2020},
+		{ID: "g2", Title: "B", ReleaseYear: 2010},
+		{ID: "g3", Title: "C", ReleaseYear: 2020},
+		{ID: "g4", Title: "D"}, // год 0 — бакет «—»
+	} {
+		if err := UpsertGame(db, g); err != nil {
+			t.Fatalf("upsert %s: %v", g.ID, err)
+		}
+	}
+
+	got, err := IndexBuckets(db, ListParams{Sort: "year", Order: "asc"})
+	if err != nil {
+		t.Fatalf("buckets: %v", err)
+	}
+	want := []IndexBucket{{"—", 0}, {"2010", 1}, {"2020", 2}}
+	assertBuckets(t, got, want)
+
+	got, err = IndexBuckets(db, ListParams{Sort: "year", Order: "desc"})
+	if err != nil {
+		t.Fatalf("buckets desc: %v", err)
+	}
+	want = []IndexBucket{{"2020", 0}, {"2010", 2}, {"—", 3}}
+	assertBuckets(t, got, want)
+}
+
+func TestIndexBucketsDispatch(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+	if err := UpsertGame(db, GameRow{ID: "g1", Title: "Alpha", ReleaseYear: 2020}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	// title — буквы
+	got, err := IndexBuckets(db, ListParams{Sort: "title", Order: "asc"})
+	if err != nil || len(got) != 1 || got[0].Label != "A" {
+		t.Fatalf("title: got %+v err %v, ждали бакет A", got, err)
+	}
+	// неизвестная сортировка — без индекса
+	got, err = IndexBuckets(db, ListParams{Sort: "average", Order: "asc"})
+	if err != nil || got != nil {
+		t.Fatalf("average: got %+v err %v, ждали nil", got, err)
+	}
+}
+
+func assertBuckets(t *testing.T, got, want []IndexBucket) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("got %+v, ждали %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %+v, ждали %+v", got, want)
+		}
+	}
+}
