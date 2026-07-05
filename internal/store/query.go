@@ -165,7 +165,7 @@ var sortColumns = map[string]string{
 	"average":  "average_score",
 	"critic":   "critic_average_score",
 	"player":   "player_average_score",
-	"title":    "title",
+	"title":    "title COLLATE NOCASE",
 	"hltbmain": "hltb_main_extra",
 }
 
@@ -325,7 +325,7 @@ func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
 		dir = "DESC"
 	}
 	// игры без значения сортируемой колонки — всегда в конец
-	orderSQL := fmt.Sprintf("ORDER BY (%s IS NULL), %s %s, title ASC", col, col, dir)
+	orderSQL := fmt.Sprintf("ORDER BY (%s IS NULL), %s %s, title COLLATE NOCASE ASC", col, col, dir)
 
 	query := `
 SELECT id, title, COALESCE(title_en,''), COALESCE(release_year,0), COALESCE(platforms,''), COALESCE(image_url,''),
