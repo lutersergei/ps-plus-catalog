@@ -23,9 +23,11 @@ type ListParams struct {
 	CriticTo      float64  // верхняя граница оценки критиков (0 = не задана)
 	PlayerFrom    float64  // нижняя граница оценки игроков (0 = не задана)
 	PlayerTo      float64  // верхняя граница оценки игроков (0 = не задана)
+	ReviewsFrom   int      // нижняя граница суммы пользовательских оценок MC+OC (0 = не задана)
+	ReviewsTo     int      // верхняя граница суммы пользовательских оценок MC+OC (0 = не задана)
 	HLTBFromHours float64  // нижняя граница Main+Sides в часах (0 = не задана)
 	HLTBToHours   float64  // верхняя граница Main+Sides в часах (0 = не задана)
-	Sort          string   // "year" | "average" | "critic" | "player" | "title" | "hltbmain"
+	Sort          string   // "year" | "average" | "critic" | "player" | "title" | "hltbmain" | "reviews"
 	Order         string   // "asc" | "desc"
 	Page          int      // с 1
 	PageSize      int
@@ -176,7 +178,10 @@ var sortColumns = map[string]string{
 	"player":   "player_average_score",
 	"title":    "title COLLATE NOCASE",
 	"hltbmain": "hltb_main_extra",
+	"reviews":  reviewCountExpr,
 }
+
+const reviewCountExpr = "(COALESCE(metacritic_user_count, 0) + COALESCE(opencritic_player_count, 0))"
 
 // Границы пользовательских параметров: защита от чрезмерных значений из query
 // string (раздутый SQL, переполнение OFFSET и т.п.).
@@ -223,6 +228,9 @@ func NormalizeParams(p *ListParams) {
 	}
 	if p.PlayerFrom > 0 && p.PlayerTo > 0 && p.PlayerTo < p.PlayerFrom {
 		p.PlayerFrom, p.PlayerTo = 0, 0
+	}
+	if p.ReviewsFrom > 0 && p.ReviewsTo > 0 && p.ReviewsTo < p.ReviewsFrom {
+		p.ReviewsFrom, p.ReviewsTo = 0, 0
 	}
 	if p.HLTBFromHours > 0 && p.HLTBToHours > 0 && p.HLTBToHours < p.HLTBFromHours {
 		p.HLTBFromHours, p.HLTBToHours = 0, 0
@@ -287,6 +295,14 @@ func buildListWhere(p ListParams) (string, []any) {
 		where = append(where, "player_average_score <= ?")
 		args = append(args, p.PlayerTo)
 	}
+	if p.ReviewsFrom > 0 {
+		where = append(where, reviewCountExpr+" >= ?")
+		args = append(args, p.ReviewsFrom)
+	}
+	if p.ReviewsTo > 0 {
+		where = append(where, reviewCountExpr+" <= ?")
+		args = append(args, p.ReviewsTo)
+	}
 
 	// Фильтр по времени Main+Sides (в часах → секунды в БД)
 	if p.HLTBFromHours > 0 {
@@ -331,8 +347,35 @@ func IndexBuckets(db *sql.DB, p ListParams) ([]IndexBucket, error) {
 		return valueIndexBuckets(db, p, decadeExpr("player_average_score"), decadeBucketLabel)
 	case "hltbmain":
 		return valueIndexBuckets(db, p, hltbThresholdExpr, hltbBucketLabel)
+	case "reviews":
+		return valueIndexBuckets(db, p, reviewCountThresholdExpr, reviewCountBucketLabel)
 	default:
 		return nil, nil
+	}
+}
+
+const reviewCountThresholdExpr = `CASE
+  WHEN ` + reviewCountExpr + ` = 0 THEN 0
+  WHEN ` + reviewCountExpr + ` < 100 THEN 1
+  WHEN ` + reviewCountExpr + ` < 500 THEN 100
+  WHEN ` + reviewCountExpr + ` < 1000 THEN 500
+  WHEN ` + reviewCountExpr + ` < 5000 THEN 1000
+  ELSE 5000 END`
+
+func reviewCountBucketLabel(v int64) string {
+	switch v {
+	case 0:
+		return "0"
+	case 1:
+		return "1–99"
+	case 100:
+		return "100–499"
+	case 500:
+		return "500–999"
+	case 1000:
+		return "1к–4.9к"
+	default:
+		return "5к+"
 	}
 }
 

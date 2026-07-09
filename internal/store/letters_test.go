@@ -291,3 +291,138 @@ func TestIndexBucketsHLTBThresholds(t *testing.T) {
 	}
 	assertBuckets(t, got, []IndexBucket{{"60+", 0}, {"10–20", 1}, {"0–5", 2}})
 }
+
+func TestListGamesFiltersByReviewCountSum(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	for _, g := range []GameRow{
+		{ID: "g1", Title: "Few Reviews"},
+		{ID: "g2", Title: "Enough Reviews"},
+		{ID: "g3", Title: "Many Reviews"},
+		{ID: "g4", Title: "No Reviews"},
+	} {
+		if err := UpsertGame(db, g); err != nil {
+			t.Fatalf("upsert %s: %v", g.ID, err)
+		}
+	}
+	updates := map[string][2]int{
+		"g1": {10, 20},    // 30
+		"g2": {800, 250},  // 1050
+		"g3": {3000, 400}, // 3400
+	}
+	for id, counts := range updates {
+		if _, err := db.Exec(`UPDATE games SET metacritic_user_count = ?, opencritic_player_count = ? WHERE id = ?`, counts[0], counts[1], id); err != nil {
+			t.Fatalf("update %s: %v", id, err)
+		}
+	}
+
+	res, err := ListGames(db, ListParams{ReviewsFrom: 1000, ReviewsTo: 2000, Sort: "title", Order: "asc", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if res.Total != 1 || len(res.Games) != 1 || res.Games[0].ID != "g2" {
+		t.Fatalf("got total=%d games=%v, ждали только g2", res.Total, gameIDs(res.Games))
+	}
+}
+
+func TestListGamesSortsByReviewCountSum(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	for _, g := range []GameRow{
+		{ID: "g1", Title: "A"},
+		{ID: "g2", Title: "B"},
+		{ID: "g3", Title: "C"},
+	} {
+		if err := UpsertGame(db, g); err != nil {
+			t.Fatalf("upsert %s: %v", g.ID, err)
+		}
+	}
+	updates := map[string][2]int{
+		"g1": {100, 0},  // 100
+		"g2": {20, 400}, // 420
+		"g3": {0, 0},    // 0
+	}
+	for id, counts := range updates {
+		if _, err := db.Exec(`UPDATE games SET metacritic_user_count = ?, opencritic_player_count = ? WHERE id = ?`, counts[0], counts[1], id); err != nil {
+			t.Fatalf("update %s: %v", id, err)
+		}
+	}
+
+	res, err := ListGames(db, ListParams{Sort: "reviews", Order: "desc", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list desc: %v", err)
+	}
+	if got, want := gameIDs(res.Games), []string{"g2", "g1", "g3"}; !sameStrings(got, want) {
+		t.Fatalf("desc got %v, ждали %v", got, want)
+	}
+
+	res, err = ListGames(db, ListParams{Sort: "reviews", Order: "asc", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list asc: %v", err)
+	}
+	if got, want := gameIDs(res.Games), []string{"g3", "g1", "g2"}; !sameStrings(got, want) {
+		t.Fatalf("asc got %v, ждали %v", got, want)
+	}
+}
+
+func TestIndexBucketsReviewCountThresholds(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	for _, g := range []GameRow{
+		{ID: "g1", Title: "A"},
+		{ID: "g2", Title: "B"},
+		{ID: "g3", Title: "C"},
+	} {
+		if err := UpsertGame(db, g); err != nil {
+			t.Fatalf("upsert %s: %v", g.ID, err)
+		}
+	}
+	updates := map[string][2]int{
+		"g1": {0, 0},       // 0
+		"g2": {700, 800},   // 1k-4.9k
+		"g3": {3000, 2500}, // 5k+
+	}
+	for id, counts := range updates {
+		if _, err := db.Exec(`UPDATE games SET metacritic_user_count = ?, opencritic_player_count = ? WHERE id = ?`, counts[0], counts[1], id); err != nil {
+			t.Fatalf("update %s: %v", id, err)
+		}
+	}
+
+	got, err := IndexBuckets(db, ListParams{Sort: "reviews", Order: "desc"})
+	if err != nil {
+		t.Fatalf("buckets desc: %v", err)
+	}
+	assertBuckets(t, got, []IndexBucket{{"5к+", 0}, {"1к–4.9к", 1}, {"0", 2}})
+}
+
+func gameIDs(games []GameView) []string {
+	ids := make([]string, 0, len(games))
+	for _, g := range games {
+		ids = append(ids, g.ID)
+	}
+	return ids
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}

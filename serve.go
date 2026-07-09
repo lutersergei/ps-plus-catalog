@@ -211,6 +211,8 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 		CriticTo:      atofDefault(q.Get("critic_to"), 0),
 		PlayerFrom:    atofDefault(q.Get("player_from"), 0),
 		PlayerTo:      atofDefault(q.Get("player_to"), 0),
+		ReviewsFrom:   atoiDefault(q.Get("reviews_from"), 0),
+		ReviewsTo:     atoiDefault(q.Get("reviews_to"), 0),
 		HLTBFromHours: atofDefault(q.Get("hltb_from"), 0),
 		HLTBToHours:   atofDefault(q.Get("hltb_to"), 0),
 		Sort:          orDefault(q.Get("sort"), "title"),
@@ -305,6 +307,12 @@ func handleIndex(w http.ResponseWriter, r *http.Request, db *sql.DB, tmpl *templ
 	}
 	if p.PlayerTo > 0 {
 		base.Set("player_to", strconv.FormatFloat(p.PlayerTo, 'f', -1, 64))
+	}
+	if p.ReviewsFrom > 0 {
+		base.Set("reviews_from", strconv.Itoa(p.ReviewsFrom))
+	}
+	if p.ReviewsTo > 0 {
+		base.Set("reviews_to", strconv.Itoa(p.ReviewsTo))
 	}
 	if p.HLTBFromHours > 0 {
 		base.Set("hltb_from", strconv.FormatFloat(p.HLTBFromHours, 'f', -1, 64))

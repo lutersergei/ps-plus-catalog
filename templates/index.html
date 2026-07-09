@@ -45,7 +45,7 @@ body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.45 v
 a { color: var(--cobalt); }
 :focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; border-radius: 4px; }
 
-.wrap { max-width: 1320px; margin: 0 auto; padding: 0 24px; }
+.wrap { max-width: 1440px; margin: 0 auto; padding: 0 24px; }
 
 /* ---------- Шапка: одна строка ---------- */
 .masthead { border-bottom: 1px solid var(--line); }
@@ -94,13 +94,35 @@ a { color: var(--cobalt); }
 }
 .tbtn:hover { color: var(--cobalt); border-color: var(--cobalt); }
 
-/* ---------- Фильтры ---------- */
-.filters {
-  display: flex; flex-wrap: wrap; gap: 16px 22px;
-  align-items: flex-end;
-  padding: 18px 0 20px;
-  border-bottom: 1px solid var(--line);
+/* ---------- Фильтры + выдача ---------- */
+.app-shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+  padding: 20px 0 0;
 }
+.filter-sidebar {
+  position: sticky;
+  top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  max-height: calc(100vh - 28px);
+  overflow: auto;
+  padding: 16px;
+  background: color-mix(in oklab, var(--card) 72%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.filter-heading {
+  font: 700 11px/1 var(--mono);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.results-panel { min-width: 0; }
+.results-panel { padding-top: 0; }
 .f { display: flex; flex-direction: column; gap: 6px; }
 .f > label, .f > .flabel {
   font: 600 10px/1 var(--mono);
@@ -114,6 +136,12 @@ a { color: var(--cobalt); }
   padding: 7px 9px; font: 13px var(--sans);
 }
 .f input[type=number] { width: 78px; font-family: var(--mono); }
+.filter-sidebar .f input[type=text],
+.filter-sidebar .f select,
+.filter-sidebar .genre-dd summary { width: 100%; }
+.filter-sidebar .f input[type=number] { width: 100%; min-width: 0; }
+.filter-sidebar .pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.filter-sidebar .range { width: 100%; }
 .f input[type=text] { width: 180px; }
 .f input::placeholder { color: var(--faint); }
 .pair { display: flex; align-items: center; gap: 5px; }
@@ -130,6 +158,13 @@ a { color: var(--cobalt); }
   padding: 6px; min-width: 210px;
   box-shadow: 0 10px 30px rgba(0,0,0,.18);
 }
+.filter-sidebar .genre-panel {
+  position: static;
+  width: 100%;
+  min-width: 0;
+  max-height: 220px;
+  box-shadow: none;
+}
 .genre-opt {
   display: flex; align-items: center; gap: 8px;
   padding: 5px 6px; font-size: 13px;
@@ -137,8 +172,11 @@ a { color: var(--cobalt); }
 }
 .genre-opt:hover { background: var(--line-soft); }
 .checks { display: flex; gap: 14px; padding: 8px 0; }
+.filter-sidebar .checks { flex-direction: column; gap: 8px; padding: 2px 0; }
 .checks label { display: flex; gap: 6px; align-items: center; font-size: 13px; cursor: pointer; }
 input[type=checkbox] { accent-color: var(--cobalt); width: 14px; height: 14px; }
+.filter-actions { display: flex; align-items: center; gap: 12px; padding-top: 2px; }
+.filter-actions .btn { flex: 1; }
 .btn {
   background: var(--cobalt); color: var(--paper);
   border: none; border-radius: 7px;
@@ -183,11 +221,10 @@ a.reset { font-size: 13px; color: var(--muted); padding-bottom: 8px; }
 /* ---------- Сетка карточек ---------- */
 .grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
   gap: 16px;
   padding: 22px 0;
 }
-@media (max-width: 1200px) { .grid { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); } }
 
 .gcard {
   background: var(--card);
@@ -306,7 +343,7 @@ a.h:hover { color: var(--cobalt); }
 .omark { font-size: 9px; color: var(--cobalt); margin-left: -4px; }
 
 /* ---------- Лента и буквенный индекс ---------- */
-.catalog { display: flex; gap: 14px; align-items: flex-start; padding: 22px 0; }
+.catalog { display: flex; gap: 14px; align-items: flex-start; padding: 16px 0 22px; }
 .catalog .grid { flex: 1; padding: 0; }
 .alpha {
   position: sticky; top: 12px;
@@ -326,12 +363,26 @@ a.h:hover { color: var(--cobalt); }
 .morewrap { display: flex; justify-content: center; padding: 4px 0 14px; }
 a.more { text-decoration: none; }
 @media (max-width: 1200px) {
+  .app-shell { grid-template-columns: 1fr; gap: 16px; }
+  .filter-sidebar {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: none;
+  }
+  .filter-heading, .filter-actions { grid-column: 1 / -1; }
   .catalog { display: block; }
   .alpha {
     position: static; flex-direction: row;
     overflow-x: auto; max-height: none;
     margin-top: 14px; padding-bottom: 4px;
   }
+}
+@media (max-width: 700px) {
+  .wrap { padding: 0 14px; }
+  .filter-sidebar { grid-template-columns: 1fr; padding: 14px; }
+  .filter-actions { align-items: stretch; flex-direction: column; }
+  a.reset { padding-bottom: 0; }
 }
 .pcount { text-align: center; color: var(--muted); font-size: 12px; padding-bottom: 50px; }
 .pcount b { font-family: var(--mono); color: var(--ink); }
@@ -369,7 +420,9 @@ a.more { text-decoration: none; }
 </header>
 
 <div class="wrap">
-<form class="filters" method="get" action="">
+<form class="filters app-shell" method="get" action="">
+<aside class="filter-sidebar">
+  <div class="filter-heading">Фильтры</div>
   <div class="f">
     <label>Поиск</label>
     <input type="text" name="q" value="{{.Params.Search}}" placeholder="Название игры">
@@ -421,6 +474,16 @@ a.more { text-decoration: none; }
       <input type="range" class="hi" name="player_to" min="0" max="100" value="{{$playerTo}}" aria-label="Оценка игроков, до">
     </div>
   </div>
+  <div class="f">
+    <span class="flabel">Оценок</span>
+    <div class="pair">
+      <input type="number" name="reviews_from" min="0" placeholder="от"
+        {{if gt .Params.ReviewsFrom 0}}value="{{.Params.ReviewsFrom}}"{{end}}>
+      <span class="dash">–</span>
+      <input type="number" name="reviews_to" min="0" placeholder="до"
+        {{if gt .Params.ReviewsTo 0}}value="{{.Params.ReviewsTo}}"{{end}}>
+    </div>
+  </div>
   {{$hltbFrom := printf "%.0f" .Params.HLTBFromHours}}
   {{$hltbTo := "80"}}{{if gt .Params.HLTBToHours 0.0}}{{$hltbTo = printf "%.0f" .Params.HLTBToHours}}{{end}}
   <div class="f">
@@ -447,6 +510,7 @@ a.more { text-decoration: none; }
       <option value="year"     {{if eq $s "year"}}selected{{end}}>По году</option>
       <option value="critic"   {{if eq $s "critic"}}selected{{end}}>Вердикт критиков</option>
       <option value="player"   {{if eq $s "player"}}selected{{end}}>Вердикт игроков</option>
+      <option value="reviews"  {{if eq $s "reviews"}}selected{{end}}>Количество оценок</option>
       <option value="hltbmain" {{if eq $s "hltbmain"}}selected{{end}}>Время прохождения</option>
     </select>
   </div>
@@ -458,9 +522,13 @@ a.more { text-decoration: none; }
       <option value="desc" {{if eq $o "desc"}}selected{{end}}>По убыванию</option>
     </select>
   </div>
-  <button class="btn" type="submit">Показать</button>
-  <a class="reset" href="?">Сбросить</a>
-</form>
+  <div class="filter-actions">
+    <button class="btn" type="submit">Показать</button>
+    <a class="reset" href="?">Сбросить</a>
+  </div>
+</aside>
+
+<main class="results-panel">
 
 {{define "cards"}}
 {{$base := mul (add .Result.Page -1) .Result.PageSize}}
@@ -582,6 +650,8 @@ a.more { text-decoration: none; }
   <a class="reset" href="?">Сбросить все фильтры</a>
 </div>
 {{end}}
+</main>
+</form>
 </div>
 
 <script>

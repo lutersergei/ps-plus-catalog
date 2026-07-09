@@ -137,6 +137,45 @@ func TestHandleIndexParsesCriticAndPlayerFilters(t *testing.T) {
 	}
 }
 
+func TestHandleIndexParsesReviewCountFilterAndSort(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	for _, game := range []store.GameRow{
+		{ID: "g1", Title: "Few Reviews"},
+		{ID: "g2", Title: "Enough Reviews"},
+	} {
+		if err := store.UpsertGame(db, game); err != nil {
+			t.Fatalf("upsert %s: %v", game.ID, err)
+		}
+	}
+	if _, err := db.Exec(`UPDATE games SET metacritic_user_count = 10, opencritic_player_count = 20 WHERE id = 'g1'`); err != nil {
+		t.Fatalf("update g1: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE games SET metacritic_user_count = 900, opencritic_player_count = 150 WHERE id = 'g2'`); err != nil {
+		t.Fatalf("update g2: %v", err)
+	}
+
+	tmpl := template.Must(template.New("test").Parse(`total={{.Result.Total}} first={{(index .Result.Games 0).Title}} base={{.BaseQuery}} buckets={{len .Buckets}}`))
+	req := httptest.NewRequest("GET", "/?reviews_from=1000&reviews_to=2000&sort=reviews&order=desc", nil)
+	rec := httptest.NewRecorder()
+
+	handleIndex(rec, req, db, tmpl)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "total=1") || !strings.Contains(body, "first=Enough Reviews") {
+		t.Fatalf("body=%q, ждали одну игру с суммой оценок в диапазоне", body)
+	}
+	for _, want := range []string{"reviews_from=1000", "reviews_to=2000", "sort=reviews", "order=desc", "buckets=1"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("body=%q, ждали %q", body, want)
+		}
+	}
+}
+
 func TestIndexTemplateRendersCriticAndPlayerControls(t *testing.T) {
 	tmpl, err := newIndexTemplate()
 	if err != nil {
@@ -172,10 +211,13 @@ func TestIndexTemplateRendersCriticAndPlayerControls(t *testing.T) {
 		`name="critic_to"`,
 		`name="player_from"`,
 		`name="player_to"`,
+		`name="reviews_from"`,
+		`name="reviews_to"`,
 		`type="range"`,
 		// сортировка по вердиктам
 		`value="critic"`,
 		`value="player"`,
+		`value="reviews"`,
 		// пара вердиктов: классы цвета по величине оценки
 		`class="chip good"`,
 		// вес OpenCritic: глиф на чипе игроков и полупрозрачная оценка в источниках
@@ -191,6 +233,45 @@ func TestIndexTemplateRendersCriticAndPlayerControls(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("rendered template missing %q", want)
 		}
+	}
+}
+
+func TestIndexTemplateRendersSidebarFilterLayout(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	data := pageData{
+		Result: store.ListResult{
+			Games:    []store.GameView{{ID: "g1", Title: "Game"}},
+			Page:     1,
+			PageSize: 24,
+		},
+		Params: store.ListParams{Sort: "reviews", Order: "desc"},
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`class="filters app-shell"`,
+		`class="filter-sidebar"`,
+		`class="results-panel"`,
+		`<aside`,
+		`<main`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("sidebar layout missing %q", want)
+		}
+	}
+	if strings.Index(body, `class="filter-sidebar"`) > strings.Index(body, `class="results-panel"`) {
+		t.Fatalf("filter sidebar should render before results panel")
+	}
+	if strings.Index(body, `name="sort"`) > strings.Index(body, `class="results-panel"`) {
+		t.Fatalf("sort control should render inside filter sidebar")
 	}
 }
 
