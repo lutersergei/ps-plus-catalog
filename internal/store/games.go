@@ -26,6 +26,12 @@ type GameRow struct {
 	StoreURL    string
 }
 
+// SourceGenre — жанр, полученный из конкретного внешнего источника.
+type SourceGenre struct {
+	Genre         string
+	SourceGenreID sql.NullInt64
+}
+
 // UpsertGame вставляет или обновляет поля каталога игры. Поля оценок
 // (metacritic_score, opencritic_score, hltb_*, average_score) НЕ затрагиваются,
 // чтобы повторный sync не сбрасывал уже собранные оценки.
@@ -206,6 +212,55 @@ func UpdateLangs(db *sql.DB, id string, spoken, screen []string) error {
 	_, err := db.Exec(`UPDATE games SET spoken_langs = ?, screen_langs = ?, langs_checked_at = CURRENT_TIMESTAMP WHERE id = ?`,
 		string(spokenJSON), string(screenJSON), id)
 	return err
+}
+
+// SetSourceGenres заменяет жанры игры для одного источника. Пустые жанры
+// игнорируются; жанры других источников для этой игры не затрагиваются.
+func SetSourceGenres(db dbHandle, gameID, source string, genres []SourceGenre) error {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return nil
+	}
+	if _, err := db.Exec(`DELETE FROM game_source_genres WHERE game_id = ? AND source = ?`, gameID, source); err != nil {
+		return err
+	}
+	stmt, err := db.Prepare(`INSERT OR IGNORE INTO game_source_genres (game_id, source, genre, source_genre_id) VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	for _, g := range genres {
+		genre := strings.TrimSpace(g.Genre)
+		if genre == "" {
+			continue
+		}
+		if _, err := stmt.Exec(gameID, source, genre, g.SourceGenreID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// SourceGenres возвращает сохранённые жанры, сгруппированные по источнику.
+func SourceGenres(db *sql.DB, gameID string) (map[string][]string, error) {
+	rows, err := db.Query(`
+SELECT source, genre
+FROM game_source_genres
+WHERE game_id = ?
+ORDER BY source, genre`, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var source, genre string
+		if err := rows.Scan(&source, &genre); err != nil {
+			return nil, err
+		}
+		out[source] = append(out[source], genre)
+	}
+	return out, rows.Err()
 }
 
 // UpdateHLTB записывает время Main+Sides (сек) и рейтинг HLTB (0–100), помечает

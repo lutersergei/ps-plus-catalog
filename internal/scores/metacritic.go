@@ -40,6 +40,7 @@ type Rating struct {
 type MetacriticResult struct {
 	Critic  Rating
 	User    Rating
+	Genres  []string
 	PageURL string
 	UserErr error
 
@@ -154,7 +155,7 @@ func metacriticScoresBySlug(ctx context.Context, c *http.Client, slug string, fe
 	if err != nil {
 		return MetacriticResult{}, false, err
 	}
-	res := MetacriticResult{PageURL: pageURL, pageTitle: parseMetacriticTitle(body), pageHTML: body}
+	res := MetacriticResult{PageURL: pageURL, pageTitle: parseMetacriticTitle(body), pageHTML: body, Genres: parseMetacriticGenres(body)}
 	if found {
 		res.Critic = Rating{Score: score, Found: true}
 	}
@@ -266,6 +267,71 @@ func parseMetacriticTitle(html []byte) string {
 		}
 	}
 	return ""
+}
+
+func parseMetacriticGenres(html []byte) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range ldJSONRe.FindAllSubmatch(html, -1) {
+		for _, genre := range metacriticGenresFromJSONLD(m[1]) {
+			if genre == "" || seen[genre] {
+				continue
+			}
+			seen[genre] = true
+			out = append(out, genre)
+		}
+	}
+	return out
+}
+
+func metacriticGenresFromJSONLD(raw []byte) []string {
+	var data any
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&data); err != nil {
+		return nil
+	}
+	return metacriticGenresFromJSONValue(data)
+}
+
+func metacriticGenresFromJSONValue(v any) []string {
+	switch x := v.(type) {
+	case map[string]any:
+		if typ, _ := x["@type"].(string); typ == "VideoGame" {
+			return metacriticGenresFromValue(x["genre"])
+		}
+		for _, child := range x {
+			if genres := metacriticGenresFromJSONValue(child); len(genres) > 0 {
+				return genres
+			}
+		}
+	case []any:
+		for _, child := range x {
+			if genres := metacriticGenresFromJSONValue(child); len(genres) > 0 {
+				return genres
+			}
+		}
+	}
+	return nil
+}
+
+func metacriticGenresFromValue(v any) []string {
+	switch x := v.(type) {
+	case string:
+		if x == "" {
+			return nil
+		}
+		return []string{x}
+	case []any:
+		out := make([]string, 0, len(x))
+		for _, child := range x {
+			if s, ok := child.(string); ok && s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 func metacriticTitleFromJSONLD(raw []byte) string {

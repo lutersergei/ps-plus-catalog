@@ -46,6 +46,14 @@ CREATE TABLE IF NOT EXISTS game_genres (
 	PRIMARY KEY (game_id, genre)
 );
 CREATE INDEX IF NOT EXISTS idx_game_genres_genre ON game_genres(genre);
+CREATE TABLE IF NOT EXISTS game_source_genres (
+	game_id         TEXT NOT NULL,
+	source          TEXT NOT NULL,
+	genre           TEXT NOT NULL,
+	source_genre_id INTEGER,
+	PRIMARY KEY (game_id, source, genre)
+);
+CREATE INDEX IF NOT EXISTS idx_game_source_genres_source_genre ON game_source_genres(source, genre);
 `
 
 // migrations добавляет недостающие колонки в уже существующую БД (idempotent).

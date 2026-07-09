@@ -106,6 +106,37 @@ func TestParseMetacriticReadsNestedJSONLDGraph(t *testing.T) {
 	}
 }
 
+func TestMetacriticResultIncludesGenres(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Host {
+		case "www.metacritic.com":
+			if req.URL.Path != "/game/sackboy-a-big-adventure/" {
+				t.Fatalf("unexpected metacritic path: %s", req.URL.Path)
+			}
+			return testHTTPResponse(http.StatusOK, `<script type="application/ld+json">{
+				"@context": "https://schema.org",
+				"@type": "VideoGame",
+				"name": "Sackboy: A Big Adventure",
+				"genre": "3D Platformer",
+				"aggregateRating": {"@type":"AggregateRating","name":"Metascore","ratingValue":79}
+			}</script>`), nil
+		case "backend.metacritic.com":
+			return testHTTPResponse(http.StatusOK, `{"data":{"item":{"max":10,"score":8,"reviewCount":10}}}`), nil
+		default:
+			t.Fatalf("unexpected host: %s", req.URL.Host)
+		}
+		return nil, nil
+	})}
+
+	got, err := MetacriticScores(context.Background(), client, "Sackboy: A Big Adventure")
+	if err != nil {
+		t.Fatalf("scores: %v", err)
+	}
+	if len(got.Genres) != 1 || got.Genres[0] != "3D Platformer" {
+		t.Fatalf("genres=%v, ждали [3D Platformer]", got.Genres)
+	}
+}
+
 func TestMetacriticScoresTriesRawSlugBeforeCleanedTitle(t *testing.T) {
 	page, err := os.ReadFile("../../testdata/metacritic_hollow_knight_voidheart.html")
 	if err != nil {

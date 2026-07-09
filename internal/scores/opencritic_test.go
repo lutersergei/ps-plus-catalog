@@ -117,6 +117,25 @@ func TestParseOpenCriticGameURL(t *testing.T) {
 	}
 }
 
+func TestParseOpenCriticGameGenres(t *testing.T) {
+	res, err := parseOpenCriticGameResult([]byte(`{
+		"topCriticScore": 79.97,
+		"url": "https://opencritic.com/game/10519/sackboy-a-big-adventure",
+		"Genres": [
+			{"id": 76, "name": "Adventure"},
+			{"id": 82, "name": "Platformer"},
+			{"id": 82, "name": "Platformer"},
+			{"id": 99, "name": ""}
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := res.Genres; len(got) != 2 || got[0].Name != "Adventure" || got[0].ID != 76 || got[1].Name != "Platformer" || got[1].ID != 82 {
+		t.Fatalf("genres=%+v, ждали Adventure/76 и Platformer/82", got)
+	}
+}
+
 func TestParseOpenCriticPlayerRating(t *testing.T) {
 	score, count, found, err := parseOpenCriticPlayerRating([]byte(`{
 		"_id": 1660,

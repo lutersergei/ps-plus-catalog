@@ -217,6 +217,9 @@ func syncCatalog(ctx context.Context, db *sql.DB, client *http.Client, allowShri
 		if err := store.SetGenres(tx, g.ID, g.Genres); err != nil {
 			return fmt.Errorf("set genres %s: %w", g.ID, err)
 		}
+		if err := store.SetSourceGenres(tx, g.ID, "psstore", sourceGenresFromStrings(g.Genres)); err != nil {
+			return fmt.Errorf("set psstore genres %s: %w", g.ID, err)
+		}
 		ids = append(ids, g.ID)
 	}
 
@@ -274,6 +277,9 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 			}
 			if err := store.UpdateMetacriticScores(db, t.ID, mc, userScore, userCount, mcURL); err != nil {
 				return fmt.Errorf("update mc %s: %w", t.ID, err)
+			}
+			if err := store.SetSourceGenres(db, t.ID, "metacritic", sourceGenresFromStrings(res.Genres)); err != nil {
+				return fmt.Errorf("update mc genres %s: %w", t.ID, err)
 			}
 		}
 		if (i+1)%25 == 0 {
@@ -335,6 +341,9 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 			if err := store.UpdateOpenCriticScores(db, t.ID, oc, ocURL, ocID, playerScore, playerCount); err != nil {
 				return fmt.Errorf("update oc %s: %w", t.ID, err)
 			}
+			if err := store.SetSourceGenres(db, t.ID, "opencritic", sourceGenresFromOpenCritic(res.Genres)); err != nil {
+				return fmt.Errorf("update oc genres %s: %w", t.ID, err)
+			}
 		}
 		fmt.Printf("  OpenCritic %d/%d: %s\n", i+1, len(ocTargets), t.Title)
 		if err := sleepCtx(ctx, 300*time.Millisecond); err != nil { // ≤4 req/s
@@ -363,6 +372,32 @@ func openCriticKeys() []string {
 	}
 	add(os.Getenv("OPENCRITIC_API_KEY"))
 	return keys
+}
+
+func sourceGenresFromStrings(genres []string) []store.SourceGenre {
+	if len(genres) == 0 {
+		return nil
+	}
+	out := make([]store.SourceGenre, 0, len(genres))
+	for _, genre := range genres {
+		out = append(out, store.SourceGenre{Genre: genre})
+	}
+	return out
+}
+
+func sourceGenresFromOpenCritic(genres []scores.OpenCriticGenre) []store.SourceGenre {
+	if len(genres) == 0 {
+		return nil
+	}
+	out := make([]store.SourceGenre, 0, len(genres))
+	for _, genre := range genres {
+		var id sql.NullInt64
+		if genre.ID > 0 {
+			id = sql.NullInt64{Int64: int64(genre.ID), Valid: true}
+		}
+		out = append(out, store.SourceGenre{Genre: genre.Name, SourceGenreID: id})
+	}
+	return out
 }
 
 func openCriticSiteKey() string {

@@ -87,8 +87,15 @@ type OpenCriticResult struct {
 	ID        int
 	Critic    Rating
 	Player    Rating
+	Genres    []OpenCriticGenre
 	PageURL   string
 	PlayerErr error
+}
+
+// OpenCriticGenre — жанр из ответа /game/<id> OpenCritic.
+type OpenCriticGenre struct {
+	ID   int
+	Name string
 }
 
 // OpenCriticScores ищет игру и возвращает critic score плюс player rating, если
@@ -106,13 +113,13 @@ func OpenCriticScores(ctx context.Context, c *http.Client, pool *KeyPool, siteKe
 	if err != nil {
 		return OpenCriticResult{}, err
 	}
-	score, found, pageURL, err := parseOpenCriticGame(raw)
+	parsed, err := parseOpenCriticGameResult(raw)
 	if err != nil {
 		return OpenCriticResult{}, err
 	}
-	res := OpenCriticResult{ID: best.ID, PageURL: pageURL}
-	if found {
-		res.Critic = Rating{Score: score, Found: true}
+	res := OpenCriticResult{ID: best.ID, PageURL: parsed.PageURL, Genres: parsed.Genres}
+	if parsed.Found {
+		res.Critic = Rating{Score: parsed.Score, Found: true}
 	}
 	if siteKey != "" {
 		player, err := openCriticPlayerRating(ctx, c, siteKey, best.ID)
@@ -162,21 +169,62 @@ func bestMatch(title string, results []ocSearchResult) (ocSearchResult, bool) {
 // диапазона 0–100 или ≤0 — у непрорецензированных игр OpenCritic отдаёт 0/-1).
 // Иначе ноль попал бы в БД и занизил average_score.
 func parseOpenCriticGame(raw []byte) (score int, found bool, pageURL string, err error) {
+	res, err := parseOpenCriticGameResult(raw)
+	if err != nil {
+		return 0, false, "", err
+	}
+	return res.Score, res.Found, res.PageURL, nil
+}
+
+type openCriticGameResult struct {
+	Score   int
+	Found   bool
+	PageURL string
+	Genres  []OpenCriticGenre
+}
+
+func parseOpenCriticGameResult(raw []byte) (openCriticGameResult, error) {
 	var g struct {
 		TopCriticScore *float64 `json:"topCriticScore"`
 		URL            string   `json:"url"`
+		Genres         []struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"Genres"`
 	}
 	if err := json.Unmarshal(raw, &g); err != nil {
-		return 0, false, "", fmt.Errorf("parse opencritic game: %w", err)
+		return openCriticGameResult{}, fmt.Errorf("parse opencritic game: %w", err)
 	}
+	res := openCriticGameResult{PageURL: g.URL, Genres: dedupeOpenCriticGenres(g.Genres)}
 	if g.TopCriticScore == nil {
-		return 0, false, g.URL, nil
+		return res, nil
 	}
 	v := *g.TopCriticScore
 	if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 100 {
-		return 0, false, g.URL, nil
+		return res, nil
 	}
-	return int(math.Round(v)), true, g.URL, nil
+	res.Score = int(math.Round(v))
+	res.Found = true
+	return res, nil
+}
+
+func dedupeOpenCriticGenres(in []struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}) []OpenCriticGenre {
+	if len(in) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]OpenCriticGenre, 0, len(in))
+	for _, g := range in {
+		if g.Name == "" || seen[g.Name] {
+			continue
+		}
+		seen[g.Name] = true
+		out = append(out, OpenCriticGenre{ID: g.ID, Name: g.Name})
+	}
+	return out
 }
 
 func openCriticPlayerRating(ctx context.Context, c *http.Client, siteKey string, gameID int) (Rating, error) {

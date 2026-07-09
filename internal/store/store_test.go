@@ -184,6 +184,40 @@ func TestGamesNeedingOpenCriticRefreshesStaleRowsWithURL(t *testing.T) {
 	}
 }
 
+func TestSetSourceGenresReplacesPerSourceOnly(t *testing.T) {
+	db := newTestDB(t, 1)
+	if err := SetSourceGenres(db, "g1", "metacritic", []SourceGenre{{Genre: "3D Platformer"}}); err != nil {
+		t.Fatalf("set metacritic genres: %v", err)
+	}
+	if err := SetSourceGenres(db, "g1", "opencritic", []SourceGenre{{Genre: "Adventure", SourceGenreID: sql.NullInt64{Int64: 76, Valid: true}}, {Genre: "Platformer"}}); err != nil {
+		t.Fatalf("set opencritic genres: %v", err)
+	}
+	if err := SetSourceGenres(db, "g1", "opencritic", []SourceGenre{{Genre: "Platformer", SourceGenreID: sql.NullInt64{Int64: 82, Valid: true}}, {Genre: "Platformer"}}); err != nil {
+		t.Fatalf("replace opencritic genres: %v", err)
+	}
+	got, err := SourceGenres(db, "g1")
+	if err != nil {
+		t.Fatalf("source genres: %v", err)
+	}
+	want := map[string][]string{
+		"metacritic": []string{"3D Platformer"},
+		"opencritic": []string{"Platformer"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("sources=%v, ждали %v", got, want)
+	}
+	for source, genres := range want {
+		if len(got[source]) != len(genres) {
+			t.Fatalf("%s genres=%v, ждали %v", source, got[source], genres)
+		}
+		for i := range genres {
+			if got[source][i] != genres[i] {
+				t.Fatalf("%s genres=%v, ждали %v", source, got[source], genres)
+			}
+		}
+	}
+}
+
 func TestUpdateStoresUserScoresAndRecomputesAllAverages(t *testing.T) {
 	db := newTestDB(t, 1)
 	if err := UpdateMetacriticScores(
