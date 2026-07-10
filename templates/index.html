@@ -635,8 +635,8 @@ a.more { text-decoration: none; }
     {{range .Buckets}}<a class="achip" data-offset="{{.Offset}}" href="?{{$bq}}&offset={{.Offset}}">{{.Label}}</a>{{end}}
   </nav>
   {{end}}
-  <div id="feedEnd" class="feed-end" aria-hidden="true"></div>
 </div>
+<div id="feedEnd" class="feed-end" aria-hidden="true"></div>
 
 {{/* Ссылка рендерится всегда: прыжок по индексу может вернуть ленту в середину
      списка, и подгрузку нужно уметь включать обратно. Скрыта, пока грузить нечего. */}}

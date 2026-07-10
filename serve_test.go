@@ -76,6 +76,9 @@ func TestInfiniteFeedPrefetchesBeforeFooter(t *testing.T) {
 	if !strings.Contains(body, `rootMargin: '1200px 0px'`) {
 		t.Fatalf("автоподгрузка должна стартовать заранее, до ручной ссылки")
 	}
+	if !strings.Contains(body, "</div>\n<div id=\"feedEnd\"") {
+		t.Fatalf("feedEnd должен идти после закрытия catalog, а не быть flex-элементом внутри него")
+	}
 }
 
 func TestFragmentRendersOnlyCardsWithTotalHeader(t *testing.T) {
