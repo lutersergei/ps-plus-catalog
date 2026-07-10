@@ -33,6 +33,49 @@ func newTestDB(t *testing.T, n int) *sql.DB {
 	return db
 }
 
+func TestSQLiteDSNAddsDefaultPragmas(t *testing.T) {
+	const wantPragmas = "_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+
+	if got, want := sqliteDSN("ps-extra.db"), "ps-extra.db?"+wantPragmas; got != want {
+		t.Fatalf("sqliteDSN plain path = %q, ждали %q", got, want)
+	}
+	if got, want := sqliteDSN("file:ps-extra.db?cache=shared"), "file:ps-extra.db?cache=shared&"+wantPragmas; got != want {
+		t.Fatalf("sqliteDSN existing query = %q, ждали %q", got, want)
+	}
+}
+
+func TestOpenAppliesSQLitePragmas(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	var journalMode string
+	if err := db.QueryRow(`PRAGMA journal_mode`).Scan(&journalMode); err != nil {
+		t.Fatalf("journal_mode: %v", err)
+	}
+	if journalMode != "wal" {
+		t.Fatalf("journal_mode=%q, ждали wal", journalMode)
+	}
+
+	var busyTimeout int
+	if err := db.QueryRow(`PRAGMA busy_timeout`).Scan(&busyTimeout); err != nil {
+		t.Fatalf("busy_timeout: %v", err)
+	}
+	if busyTimeout != 5000 {
+		t.Fatalf("busy_timeout=%d, ждали 5000", busyTimeout)
+	}
+
+	var foreignKeys int
+	if err := db.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
+		t.Fatalf("foreign_keys: %v", err)
+	}
+	if foreignKeys != 1 {
+		t.Fatalf("foreign_keys=%d, ждали 1", foreignKeys)
+	}
+}
+
 func TestListGames_PageClamp(t *testing.T) {
 	db := newTestDB(t, 30) // 30 игр, pageSize 24 → 2 страницы
 	res, err := ListGames(db, ListParams{Page: 9223372036854775807, PageSize: 24})

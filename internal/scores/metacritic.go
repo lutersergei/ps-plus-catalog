@@ -64,13 +64,18 @@ func MetacriticScores(ctx context.Context, c *http.Client, titleEn string) (Meta
 	seen := map[string]bool{}
 	for _, slug := range metacriticSlugCandidates(titleEn) {
 		seen[slug] = true
-		res, found, err := metacriticScoresBySlug(ctx, c, slug, true)
+		res, found, err := metacriticScoresBySlug(ctx, c, slug, false)
 		if err != nil {
 			return MetacriticResult{}, err
 		}
-		if found {
-			return res, nil
+		if !found {
+			continue
 		}
+		if res.pageTitle != "" && !metacriticTitlesMatch(titleEn, res.pageTitle) {
+			continue
+		}
+		metacriticFillUserScore(ctx, c, slug, res.pageHTML, &res)
+		return res, nil
 	}
 	searchSlugs, err := metacriticSearchSlugs(ctx, c, titleEn)
 	if err != nil {

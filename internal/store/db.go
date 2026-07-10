@@ -80,7 +80,7 @@ var migrations = []string{
 
 // Open открывает базу SQLite по указанному пути и применяет миграции.
 func Open(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path)
+	db, err := sql.Open("sqlite", sqliteDSN(path))
 	if err != nil {
 		return nil, err
 	}
@@ -93,6 +93,15 @@ func Open(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+func sqliteDSN(path string) string {
+	const pragmas = "_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	return path + sep + pragmas
 }
 
 // Migrate создаёт таблицы и индексы и добавляет недостающие колонки в уже
