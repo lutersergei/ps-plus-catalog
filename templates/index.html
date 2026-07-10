@@ -475,16 +475,6 @@ a.more { text-decoration: none; }
       <input type="range" class="hi" name="player_to" min="0" max="100" value="{{$playerTo}}" aria-label="Оценка игроков, до">
     </div>
   </div>
-  <div class="f">
-    <span class="flabel">Оценок</span>
-    <div class="pair">
-      <input type="number" name="reviews_from" min="0" placeholder="от"
-        {{if gt .Params.ReviewsFrom 0}}value="{{.Params.ReviewsFrom}}"{{end}}>
-      <span class="dash">–</span>
-      <input type="number" name="reviews_to" min="0" placeholder="до"
-        {{if gt .Params.ReviewsTo 0}}value="{{.Params.ReviewsTo}}"{{end}}>
-    </div>
-  </div>
   {{$hltbFrom := printf "%.0f" .Params.HLTBFromHours}}
   {{$hltbTo := "80"}}{{if gt .Params.HLTBToHours 0.0}}{{$hltbTo = printf "%.0f" .Params.HLTBToHours}}{{end}}
   <div class="f">
@@ -493,6 +483,16 @@ a.more { text-decoration: none; }
       <div class="track"><div class="fill"></div></div>
       <input type="range" class="lo" name="hltb_from" min="0" max="80" value="{{$hltbFrom}}" aria-label="Время прохождения, от">
       <input type="range" class="hi" name="hltb_to" min="0" max="80" value="{{$hltbTo}}" aria-label="Время прохождения, до">
+    </div>
+  </div>
+  <div class="f">
+    <span class="flabel">Оценок</span>
+    <div class="pair">
+      <input type="number" name="reviews_from" min="0" placeholder="от"
+        {{if gt .Params.ReviewsFrom 0}}value="{{.Params.ReviewsFrom}}"{{end}}>
+      <span class="dash">–</span>
+      <input type="number" name="reviews_to" min="0" placeholder="до"
+        {{if gt .Params.ReviewsTo 0}}value="{{.Params.ReviewsTo}}"{{end}}>
     </div>
   </div>
 
