@@ -22,7 +22,7 @@ import (
 //go:embed templates/index.html
 var indexHTML string
 
-const pageSize = 24
+const pageSize = 25
 
 // Шкала полосы времени прохождения на карточке (0–60 ч) и максимум слайдера
 // фильтра по времени. Значение слайдера на правом краю означает «без верхней

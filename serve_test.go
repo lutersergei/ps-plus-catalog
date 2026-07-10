@@ -20,7 +20,7 @@ func TestHandleIndexOffsetParamOverridesPage(t *testing.T) {
 	}
 	defer db.Close()
 
-	// 30 игр: G01..G30 — при pageSize 24 offset=24 начинает с G25.
+	// 30 игр: G01..G30 — при pageSize 25 offset=25 начинает с G26.
 	for i := 1; i <= 30; i++ {
 		id := fmt.Sprintf("g%02d", i)
 		title := fmt.Sprintf("G%02d", i)
@@ -31,14 +31,50 @@ func TestHandleIndexOffsetParamOverridesPage(t *testing.T) {
 
 	tmpl := template.Must(template.New("test").Parse(
 		`first={{(index .Result.Games 0).Title}} page={{.Result.Page}}`))
-	req := httptest.NewRequest("GET", "/?offset=24&page=1&sort=title&order=asc", nil)
+	req := httptest.NewRequest("GET", "/?offset=25&page=1&sort=title&order=asc", nil)
 	rec := httptest.NewRecorder()
 
 	handleIndex(rec, req, db, tmpl)
 
 	body := rec.Body.String()
-	if !strings.Contains(body, "first=G25") || !strings.Contains(body, "page=2") {
-		t.Fatalf("body=%q, ждали first=G25 page=2 (offset приоритетнее page)", body)
+	if !strings.Contains(body, "first=G26") || !strings.Contains(body, "page=2") {
+		t.Fatalf("body=%q, ждали first=G26 page=2 (offset приоритетнее page)", body)
+	}
+}
+
+func TestFeedPageSizeMatchesFiveColumnRows(t *testing.T) {
+	if pageSize != 25 {
+		t.Fatalf("pageSize=%d, ждали 25 — полный ряд для 5 карточек", pageSize)
+	}
+}
+
+func TestInfiniteFeedPrefetchesBeforeFooter(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	data := pageData{
+		Result: store.ListResult{
+			Games:      []store.GameView{{ID: "g1", Title: "Game"}},
+			Total:      50,
+			Page:       1,
+			PageSize:   pageSize,
+			TotalPages: 2,
+		},
+		BaseQuery:  template.URL("sort=title&order=asc"),
+		NextOffset: pageSize,
+		HasNext:    true,
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	body := buf.String()
+	if !strings.Contains(body, `id="feedEnd"`) {
+		t.Fatalf("лента должна иметь отдельный sentinel для ранней автоподгрузки")
+	}
+	if !strings.Contains(body, `rootMargin: '1200px 0px'`) {
+		t.Fatalf("автоподгрузка должна стартовать заранее, до ручной ссылки")
 	}
 }
 
@@ -59,7 +95,7 @@ func TestFragmentRendersOnlyCardsWithTotalHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	req := httptest.NewRequest("GET", "/?fragment=cards&offset=24&sort=title&order=asc", nil)
+	req := httptest.NewRequest("GET", "/?fragment=cards&offset=25&sort=title&order=asc", nil)
 	rec := httptest.NewRecorder()
 
 	handleIndex(rec, req, db, tmpl)
@@ -71,9 +107,9 @@ func TestFragmentRendersOnlyCardsWithTotalHeader(t *testing.T) {
 	if got := rec.Header().Get("X-Total"); got != "30" {
 		t.Fatalf("X-Total=%q, ждали 30", got)
 	}
-	// вторая партия начинается с глобального номера 24
-	if !strings.Contains(body, `data-i="24"`) {
-		t.Fatalf("нет data-i=24 в теле фрагмента")
+	// вторая партия начинается с глобального номера 25
+	if !strings.Contains(body, `data-i="25"`) {
+		t.Fatalf("нет data-i=25 в теле фрагмента")
 	}
 }
 
@@ -86,15 +122,15 @@ func TestFullPageCardsCarryDataIndex(t *testing.T) {
 		Result: store.ListResult{
 			Games:    []store.GameView{{ID: "g1", Title: "Game"}},
 			Page:     3,
-			PageSize: 24,
+			PageSize: pageSize,
 		},
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	if !strings.Contains(buf.String(), `data-i="48"`) {
-		t.Fatalf("карточка на странице 3 должна иметь data-i=48")
+	if !strings.Contains(buf.String(), `data-i="50"`) {
+		t.Fatalf("карточка на странице 3 должна иметь data-i=50")
 	}
 }
 
@@ -246,7 +282,7 @@ func TestIndexTemplateRendersSidebarFilterLayout(t *testing.T) {
 		Result: store.ListResult{
 			Games:    []store.GameView{{ID: "g1", Title: "Game"}},
 			Page:     1,
-			PageSize: 24,
+			PageSize: pageSize,
 		},
 		Params: store.ListParams{Sort: "reviews", Order: "desc"},
 	}
@@ -318,13 +354,13 @@ func TestIndexTemplateRendersLetterIndexAndMoreLink(t *testing.T) {
 			Games:      []store.GameView{{ID: "g1", Title: "Game"}},
 			Total:      469,
 			Page:       1,
-			PageSize:   24,
+			PageSize:   pageSize,
 			TotalPages: 20,
 		},
 		Params:     store.ListParams{Sort: "title"},
 		BaseQuery:  template.URL("sort=title&order=asc"),
 		Buckets:    []store.IndexBucket{{Label: "#", Offset: 0}, {Label: "A", Offset: 3}},
-		NextOffset: 24,
+		NextOffset: pageSize,
 		HasNext:    true,
 	}
 	var buf bytes.Buffer
@@ -335,10 +371,10 @@ func TestIndexTemplateRendersLetterIndexAndMoreLink(t *testing.T) {
 	for _, want := range []string{
 		`class="achip" data-offset="3"`,
 		`id="moreLink"`,
-		`offset=24`,
+		`offset=25`,
 		`Показать ещё`,
 		`id="shownCount"`,
-		`data-next="24"`,
+		`data-next="25"`,
 		`data-total="469"`,
 		`data-start="0"`,
 	} {
@@ -361,11 +397,11 @@ func TestMoreLinkRenderedHiddenOnLastPage(t *testing.T) {
 			Games:      []store.GameView{{ID: "g1", Title: "Game"}},
 			Total:      25,
 			Page:       2,
-			PageSize:   24,
+			PageSize:   pageSize,
 			TotalPages: 2,
 		},
 		BaseQuery:  template.URL("sort=title&order=asc"),
-		NextOffset: 48,
+		NextOffset: 50,
 		HasNext:    false,
 	}
 	var buf bytes.Buffer

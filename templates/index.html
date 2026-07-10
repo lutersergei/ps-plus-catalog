@@ -362,6 +362,7 @@ a.h:hover { color: var(--cobalt); }
 .achip.on { background: var(--cobalt); border-color: var(--cobalt); color: var(--paper); }
 .morewrap { display: flex; justify-content: center; padding: 4px 0 14px; }
 a.more { text-decoration: none; }
+.feed-end { height: 1px; }
 @media (max-width: 1200px) {
   .app-shell { grid-template-columns: 1fr; gap: 16px; }
   .filter-sidebar {
@@ -634,6 +635,7 @@ a.more { text-decoration: none; }
     {{range .Buckets}}<a class="achip" data-offset="{{.Offset}}" href="?{{$bq}}&offset={{.Offset}}">{{.Label}}</a>{{end}}
   </nav>
   {{end}}
+  <div id="feedEnd" class="feed-end" aria-hidden="true"></div>
 </div>
 
 {{/* Ссылка рендерится всегда: прыжок по индексу может вернуть ленту в середину
@@ -715,7 +717,7 @@ document.addEventListener('click', function (e) {
   var more = document.getElementById('moreLink');
   var shown = document.getElementById('shownCount');
   if (!grid) return;
-  var psize = +grid.dataset.psize || 24;
+  var psize = +grid.dataset.psize || 25;
   var total = +grid.dataset.total || 0;
   var start = +grid.dataset.start || 0; // начало загруженного окна
   var inflight = false;   // запрос вниз/прыжок
@@ -778,10 +780,11 @@ document.addEventListener('click', function (e) {
       inflight = false;
     }).catch(function () { inflight = false; }); // ссылка остаётся — ручной retry
   }
-  if (more) {
+  var feedEnd = document.getElementById('feedEnd');
+  if (more && feedEnd) {
     new IntersectionObserver(function (es) {
       if (es[0].isIntersecting) loadNext();
-    }, { rootMargin: '400px' }).observe(more);
+    }, { rootMargin: '1200px 0px' }).observe(feedEnd);
     more.addEventListener('click', function (e) { e.preventDefault(); loadNext(); });
   }
 
