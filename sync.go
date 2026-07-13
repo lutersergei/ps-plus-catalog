@@ -256,6 +256,16 @@ func syncScores(ctx context.Context, db *sql.DB, client *http.Client, maxOC, ref
 		if err != nil {
 			// сетевой сбой/блок/5xx — НЕ помечаем проверенным, повторим в следующий запуск
 			log.Printf("[mc] %s: %v (повторим позже)", t.Title, err)
+		} else if t.NeedsMetacriticURLBackfill {
+			// Старые строки уже содержат оценки: при URL-backfill не затираем их,
+			// даже если источник временно не отдал score или user score.
+			if res.Critic.Found && res.PageURL != "" {
+				if err := store.UpdateMetacriticPageURL(db, t.ID, sql.NullString{String: res.PageURL, Valid: true}); err != nil {
+					return fmt.Errorf("update mc URL %s: %w", t.ID, err)
+				}
+			} else {
+				log.Printf("[mc] %s: URL backfill не нашёл страницу, прежние данные сохранены", t.Title)
+			}
 		} else {
 			// успех: либо нашли оценку, либо достоверно «нет» (found=false → NULL)
 			var mc sql.NullInt64

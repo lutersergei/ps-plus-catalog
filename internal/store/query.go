@@ -7,8 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/lutersergei/ps-plus-catalog/internal/scores"
 )
 
 // ListParams — параметры выборки игр для страницы.
@@ -128,18 +126,11 @@ func (g GameView) searchTerm() string {
 	return strings.TrimSpace(termCleaner.Replace(t))
 }
 
-// MetacriticURL — прямая ссылка на страницу игры (slug строится из английского
-// названия той же логикой, что и при сборе оценки). Если slug пуст — поиск.
+// MetacriticURL возвращает сохранённую страницу игры. Без неё нельзя надёжно
+// угадать, какой slug прошёл при сборе оценки, поэтому используем поиск.
 func (g GameView) MetacriticURL() string {
 	if g.MetacriticPageURL.Valid && strings.HasPrefix(g.MetacriticPageURL.String, "https://www.metacritic.com/") {
 		return g.MetacriticPageURL.String
-	}
-	t := g.TitleEn
-	if t == "" {
-		t = g.Title
-	}
-	if slug := scores.MetacriticSlug(t); slug != "" {
-		return "https://www.metacritic.com/game/" + slug + "/"
 	}
 	return "https://www.metacritic.com/search/" + url.PathEscape(g.searchTerm()) + "/"
 }

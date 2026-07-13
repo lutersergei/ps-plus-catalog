@@ -182,6 +182,47 @@ func TestMetacriticScoresTriesRawSlugBeforeCleanedTitle(t *testing.T) {
 	}
 }
 
+func TestMetacriticScoresStoresSuccessfulCleanedSlug(t *testing.T) {
+	var pagePaths []string
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Host {
+		case "www.metacritic.com":
+			pagePaths = append(pagePaths, req.URL.Path)
+			switch req.URL.Path {
+			case "/game/the-long-dark-ps4-ps5/":
+				return testHTTPResponse(http.StatusNotFound, ""), nil
+			case "/game/the-long-dark/":
+				return testHTTPResponse(http.StatusOK, metacriticTestPage("The Long Dark", 77)), nil
+			default:
+				t.Fatalf("unexpected metacritic path: %s", req.URL.Path)
+			}
+		case "backend.metacritic.com":
+			if !strings.Contains(req.URL.Path, "/the-long-dark/") {
+				t.Fatalf("unexpected user score path: %s", req.URL.Path)
+			}
+			return testHTTPResponse(http.StatusOK, `{"data":{"item":{"max":10,"score":8,"reviewCount":10}}}`), nil
+		default:
+			t.Fatalf("unexpected host: %s", req.URL.Host)
+		}
+		return nil, nil
+	})}
+
+	got, err := MetacriticScores(context.Background(), client, "The Long Dark PS4 & PS5")
+	if err != nil {
+		t.Fatalf("scores: %v", err)
+	}
+	if !got.Critic.Found || got.Critic.Score != 77 {
+		t.Fatalf("critic=%+v, ждали score=77 found=true", got.Critic)
+	}
+	if got.PageURL != "https://www.metacritic.com/game/the-long-dark/" {
+		t.Fatalf("PageURL=%q", got.PageURL)
+	}
+	wantPaths := []string{"/game/the-long-dark-ps4-ps5/", "/game/the-long-dark/"}
+	if strings.Join(pagePaths, "|") != strings.Join(wantPaths, "|") {
+		t.Fatalf("page paths=%v, ждали %v", pagePaths, wantPaths)
+	}
+}
+
 func TestMetacriticScoresFallsBackToSearchCanonicalMatch(t *testing.T) {
 	var pagePaths []string
 	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {

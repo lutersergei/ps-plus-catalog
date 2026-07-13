@@ -82,9 +82,10 @@ func CountActive(db *sql.DB) (int, error) {
 
 // ScoreTarget — игра, которой нужны/устарели оценки.
 type ScoreTarget struct {
-	ID      string
-	Title   string
-	TitleEn string
+	ID                         string
+	Title                      string
+	TitleEn                    string
+	NeedsMetacriticURLBackfill bool
 }
 
 // gamesNeeding возвращает игры, у которых указанная колонка-отметка проверки
@@ -111,9 +112,42 @@ ORDER BY title`, staleBefore)
 	return out, rows.Err()
 }
 
-// GamesNeedingMetacritic — игры без свежей проверки Metacritic.
+// GamesNeedingMetacritic — игры без свежей проверки Metacritic, а также свежие
+// оценённые игры без сохранённой ссылки на найденную страницу. Второе условие
+// заполняет URL у строк, собранных до появления metacritic_url, не меняя
+// политику обычного обновления устаревших оценок.
 func GamesNeedingMetacritic(db *sql.DB, staleBefore time.Time) ([]ScoreTarget, error) {
-	return gamesNeeding(db, "mc_checked_at", staleBefore)
+	rows, err := db.Query(`
+SELECT id, title, COALESCE(title_en, title),
+       metacritic_score IS NOT NULL
+       AND (metacritic_url IS NULL OR TRIM(metacritic_url) = '')
+       AND mc_checked_at IS NOT NULL
+       AND mc_checked_at >= ?
+FROM games
+WHERE active = 1
+  AND (
+    mc_checked_at IS NULL
+    OR mc_checked_at < ?
+    OR (
+      metacritic_score IS NOT NULL
+      AND (metacritic_url IS NULL OR TRIM(metacritic_url) = '')
+    )
+  )
+ORDER BY title`, staleBefore, staleBefore)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []ScoreTarget
+	for rows.Next() {
+		var t ScoreTarget
+		if err := rows.Scan(&t.ID, &t.Title, &t.TitleEn, &t.NeedsMetacriticURLBackfill); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }
 
 // GamesNeedingOpenCritic — игры без свежей проверки OpenCritic.
@@ -289,6 +323,14 @@ WHERE id = ?`, mc, pageURL, userScore, userCount, id); err != nil {
 		return err
 	}
 	return recomputeAverages(db, id)
+}
+
+// UpdateMetacriticPageURL сохраняет URL уже найденной страницы, не меняя
+// оценки или время их проверки. Используется для безопасного backfill старых
+// строк, у которых оценка есть, а ссылка не была сохранена.
+func UpdateMetacriticPageURL(db *sql.DB, id string, pageURL sql.NullString) error {
+	_, err := db.Exec(`UPDATE games SET metacritic_url = ? WHERE id = ?`, pageURL, id)
+	return err
 }
 
 // UpdateOpenCritic записывает только critic score и URL OpenCritic. Сохранён

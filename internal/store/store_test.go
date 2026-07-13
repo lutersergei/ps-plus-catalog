@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"math"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"testing"
@@ -583,14 +584,6 @@ func TestHLTBURLUsesDirectGamePageWhenKnown(t *testing.T) {
 	}
 }
 
-func TestMetacriticURLUsesRawSlugFirst(t *testing.T) {
-	g := GameView{TitleEn: "Hollow Knight Voidheart Edition"}
-	want := "https://www.metacritic.com/game/hollow-knight-voidheart-edition/"
-	if got := g.MetacriticURL(); got != want {
-		t.Fatalf("MetacriticURL=%q, ждали %q", got, want)
-	}
-}
-
 func TestMetacriticURLUsesStoredPageWhenKnown(t *testing.T) {
 	g := GameView{
 		TitleEn:           "No More Heroes 3",
@@ -599,6 +592,71 @@ func TestMetacriticURLUsesStoredPageWhenKnown(t *testing.T) {
 	want := "https://www.metacritic.com/game/no-more-heroes-iii/"
 	if got := g.MetacriticURL(); got != want {
 		t.Fatalf("MetacriticURL=%q, ждали %q", got, want)
+	}
+}
+
+func TestMetacriticURLSearchesWhenPageIsUnknown(t *testing.T) {
+	for _, titleEn := range []string{
+		"The Long Dark PS4 & PS5",
+		"Hollow Knight Voidheart Edition",
+	} {
+		g := GameView{TitleEn: titleEn}
+		want := "https://www.metacritic.com/search/" + url.PathEscape(titleEn) + "/"
+		if got := g.MetacriticURL(); got != want {
+			t.Fatalf("MetacriticURL(%q)=%q, ждали %q", titleEn, got, want)
+		}
+	}
+}
+
+func TestGamesNeedingMetacriticBackfillsFreshScoredRowsWithoutURL(t *testing.T) {
+	db := newTestDB(t, 4)
+	if err := UpdateMetacriticScores(
+		db, "g1",
+		sql.NullInt64{Int64: 77, Valid: true},
+		sql.NullInt64{}, sql.NullInt64{}, sql.NullString{},
+	); err != nil {
+		t.Fatalf("update g1: %v", err)
+	}
+	if err := UpdateMetacriticScores(
+		db, "g2",
+		sql.NullInt64{Int64: 78, Valid: true},
+		sql.NullInt64{}, sql.NullInt64{},
+		sql.NullString{String: "https://www.metacritic.com/game/example/", Valid: true},
+	); err != nil {
+		t.Fatalf("update g2: %v", err)
+	}
+	if err := UpdateMetacriticScores(
+		db, "g3",
+		sql.NullInt64{Int64: 79, Valid: true},
+		sql.NullInt64{}, sql.NullInt64{}, sql.NullString{},
+	); err != nil {
+		t.Fatalf("update g3: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE games SET mc_checked_at = ? WHERE id = ?`, time.Now().AddDate(0, 0, -45), "g3"); err != nil {
+		t.Fatalf("age g3 check: %v", err)
+	}
+	if _, err := db.Exec(`
+		UPDATE games
+		SET metacritic_score = ?, metacritic_url = NULL, mc_checked_at = NULL
+		WHERE id = ?`, 80, "g4"); err != nil {
+		t.Fatalf("seed g4 without check: %v", err)
+	}
+
+	targets, err := GamesNeedingMetacritic(db, time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	if len(targets) != 3 || targets[0].ID != "g1" || targets[1].ID != "g3" || targets[2].ID != "g4" {
+		t.Fatalf("ждали g1, g3 и g4, получили %#v", targets)
+	}
+	if !targets[0].NeedsMetacriticURLBackfill {
+		t.Fatalf("g1 должна быть URL backfill целью: %#v", targets[0])
+	}
+	if targets[1].NeedsMetacriticURLBackfill {
+		t.Fatalf("устаревшая g3 не должна быть URL backfill целью: %#v", targets[1])
+	}
+	if targets[2].NeedsMetacriticURLBackfill {
+		t.Fatalf("g4 без времени проверки не должна быть URL backfill целью: %#v", targets[2])
 	}
 }
 
