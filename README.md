@@ -241,6 +241,24 @@ docker run --rm -v "$PWD/data:/data" --env-file .env ps-extra sync   # собр�
 docker run --rm -p 8080:8080 -v "$PWD/data:/data" ps-extra            # показать
 ```
 
+### Production Compose
+
+[`docker-compose.prod.yml`](docker-compose.prod.yml) is the source of truth
+for the production service configuration. It contains no credentials: keep
+`.env` and `data/` only on the production host.
+
+The production host runs the manifest from `/opt/ps-extra` as
+`docker-compose.yml`. When deploying a manifest change, copy the versioned file
+there before pulling the image:
+
+```sh
+scp -P 22222 docker-compose.prod.yml root@<host>:/opt/ps-extra/docker-compose.yml
+ssh -p 22222 root@<host> 'cd /opt/ps-extra && docker compose pull ps-extra && docker compose up -d ps-extra'
+```
+
+Mount `./data:/data`, not only `ps-extra.db`: SQLite WAL and SHM sidecar files
+must persist alongside the database after one-off `sync` containers exit.
+
 ## Структура
 
 ```

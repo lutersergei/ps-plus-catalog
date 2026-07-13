@@ -1,0 +1,16 @@
+services:
+  ps-extra:
+    image: ghcr.io/lutersergei/ps-plus-catalog:latest
+    container_name: ps-extra
+    restart: always
+    env_file: .env
+    volumes:
+      # Mount the directory so SQLite WAL/SHM sidecars persist with the database.
+      - ./data:/data
+    networks:
+      - vpn_setup
+
+networks:
+  vpn_setup:
+    name: vpn_setup_default
+    external: true
