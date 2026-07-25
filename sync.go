@@ -204,11 +204,14 @@ func syncCatalog(ctx context.Context, db *sql.DB, client *http.Client, allowShri
 			prevActive, len(games), catalogShrinkLimit*100)
 	}
 
-	tx, err := db.Begin()
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	if err := store.AcquireCatalogSyncLock(tx); err != nil {
+		return err
+	}
 
 	ids := make([]string, 0, len(games))
 	observedAt := time.Now().UTC()

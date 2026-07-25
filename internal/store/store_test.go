@@ -300,6 +300,72 @@ WHERE id = ?`, g1.MembershipID).Scan(&addedOn, &source, &sourceURL); err != nil 
 	}
 }
 
+func TestApplyCatalogDateChangesIgnoresClosedMembership(t *testing.T) {
+	db := newTestDB(t, 2)
+	first := time.Date(2026, 7, 1, 8, 0, 0, 0, time.UTC)
+	removed := time.Date(2026, 7, 10, 8, 0, 0, 0, time.UTC)
+	returned := time.Date(2026, 7, 20, 8, 0, 0, 0, time.UTC)
+
+	if _, err := RecordCatalogSnapshot(db, []string{"g1", "g2"}, first); err != nil {
+		t.Fatalf("initial snapshot: %v", err)
+	}
+	targets, err := CurrentCatalogDateTargets(db)
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	var oldMembershipID int64
+	for _, target := range targets {
+		if target.GameID == "g1" {
+			oldMembershipID = target.MembershipID
+			break
+		}
+	}
+	if oldMembershipID == 0 {
+		t.Fatal("g1 membership not found")
+	}
+
+	if _, err := RecordCatalogSnapshot(db, []string{"g2"}, removed); err != nil {
+		t.Fatalf("removal snapshot: %v", err)
+	}
+	if _, err := RecordCatalogSnapshot(db, []string{"g1", "g2"}, returned); err != nil {
+		t.Fatalf("return snapshot: %v", err)
+	}
+
+	changed, err := ApplyCatalogDateChanges(db, []CatalogDateMatch{{
+		MembershipID: oldMembershipID,
+		AddedOn:      time.Date(2026, 7, 9, 0, 0, 0, 0, time.UTC),
+		SourceURL:    "https://example.com/stale",
+	}}, nil)
+	if err != nil {
+		t.Fatalf("apply stale match: %v", err)
+	}
+	if changed != 0 {
+		t.Fatalf("changed=%d, want 0 for closed membership", changed)
+	}
+
+	var oldSource sql.NullString
+	var oldRemoved sql.NullString
+	if err := db.QueryRow(`
+SELECT removed_on, added_on_source
+FROM catalog_memberships WHERE id = ?`, oldMembershipID).Scan(&oldRemoved, &oldSource); err != nil {
+		t.Fatalf("read old membership: %v", err)
+	}
+	if !oldRemoved.Valid || oldSource.Valid {
+		t.Fatalf("old membership removed=%v source=%v; it must remain historical and untouched", oldRemoved, oldSource)
+	}
+
+	var newAddedOn, newSource string
+	if err := db.QueryRow(`
+SELECT date(added_on), added_on_source
+FROM catalog_memberships
+WHERE game_id = 'g1' AND removed_on IS NULL`).Scan(&newAddedOn, &newSource); err != nil {
+		t.Fatalf("read new membership: %v", err)
+	}
+	if newAddedOn != "2026-07-20" || newSource != "observed" {
+		t.Fatalf("new membership added=%q source=%q; stale match must not retarget it", newAddedOn, newSource)
+	}
+}
+
 func TestListGamesSortsByCatalogAddedDateWithUnknownLast(t *testing.T) {
 	db := newTestDB(t, 3)
 	observed := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)

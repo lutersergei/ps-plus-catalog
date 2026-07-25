@@ -91,6 +91,18 @@ type CatalogSnapshotResult struct {
 	Removed int64
 }
 
+// AcquireCatalogSyncLock занимает общую SQLite-блокировку для операций,
+// которые читают текущие membership и затем меняют их. UPDATE удерживает
+// write-lock до commit внешней транзакции, поэтому sync и sync-dates не могут
+// закрыть период между чтением targets и записью даты.
+func AcquireCatalogSyncLock(tx *sql.Tx) error {
+	_, err := tx.Exec(`
+UPDATE catalog_sync_lock
+SET acquired_at = CURRENT_TIMESTAMP
+WHERE id = 1`)
+	return err
+}
+
 // RecordCatalogSnapshot обновляет периоды присутствия игр в PS Plus Extra.
 //
 // Для первого снимка added_on остаётся NULL: наличие игры в момент первого

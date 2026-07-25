@@ -69,6 +69,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_catalog_memberships_open
 	ON catalog_memberships(game_id) WHERE removed_on IS NULL;
 CREATE INDEX IF NOT EXISTS idx_catalog_memberships_game
 	ON catalog_memberships(game_id, first_seen_at);
+CREATE TABLE IF NOT EXISTS catalog_sync_lock (
+	id          INTEGER PRIMARY KEY CHECK (id = 1),
+	acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+INSERT OR IGNORE INTO catalog_sync_lock (id) VALUES (1);
 CREATE TABLE IF NOT EXISTS catalog_announcements (
 	url             TEXT PRIMARY KEY,
 	last_modified   TEXT NOT NULL,

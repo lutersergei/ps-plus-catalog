@@ -98,9 +98,13 @@ type CatalogDateCandidate struct {
 	SourceURL string
 }
 
+type catalogDateQuerier interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}
+
 // CatalogDateCandidates возвращает все пары названия и даты из кэша официальных
 // анонсов; хронологический порядок делает дальнейшую обработку детерминированной.
-func CatalogDateCandidates(db *sql.DB) ([]CatalogDateCandidate, error) {
+func CatalogDateCandidates(db catalogDateQuerier) ([]CatalogDateCandidate, error) {
 	rows, err := db.Query(`
 SELECT game_title, added_on, announcement_url
 FROM catalog_announcement_games
@@ -136,7 +140,7 @@ type CatalogDateTarget struct {
 
 // CurrentCatalogDateTargets возвращает активные игры с открытым периодом
 // присутствия. Исторические закрытые периоды намеренно не участвуют в матчинге.
-func CurrentCatalogDateTargets(db *sql.DB) ([]CatalogDateTarget, error) {
+func CurrentCatalogDateTargets(db catalogDateQuerier) ([]CatalogDateTarget, error) {
 	rows, err := db.Query(`
 SELECT cm.id, g.id, g.title, COALESCE(g.title_en, g.title), cm.first_seen_at,
        cm.added_on, COALESCE(cm.added_on_source, ''),
@@ -206,8 +210,33 @@ func ApplyCatalogDateChanges(db *sql.DB, matches []CatalogDateMatch, resetMember
 	}
 	defer tx.Rollback()
 
+	changed, err := ApplyCatalogDateChangesTx(tx, matches, resetMembershipIDs)
+	if err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return changed, nil
+}
+
+// ApplyCatalogDateChangesTx применяет изменения внутри уже открытой
+// транзакции. Вызывающий код отвечает за commit/rollback; это позволяет
+// удерживать блокировку каталога от чтения targets до записи дат.
+func ApplyCatalogDateChangesTx(tx *sql.Tx, matches []CatalogDateMatch, resetMembershipIDs []int64) (int64, error) {
+	if len(matches) == 0 && len(resetMembershipIDs) == 0 {
+		return 0, nil
+	}
+	return applyCatalogDateChanges(tx, matches, resetMembershipIDs)
+}
+
+func applyCatalogDateChanges(db dbHandle, matches []CatalogDateMatch, resetMembershipIDs []int64) (int64, error) {
+	if len(matches) == 0 && len(resetMembershipIDs) == 0 {
+		return 0, nil
+	}
+
 	var changed int64
-	resetStmt, err := tx.Prepare(`
+	resetStmt, err := db.Prepare(`
 UPDATE catalog_memberships
 SET added_on = date(first_seen_at), added_on_source = 'observed', source_url = NULL
 WHERE id = ? AND removed_on IS NULL
@@ -232,10 +261,11 @@ WHERE id = ? AND removed_on IS NULL
 		changed += n
 	}
 
-	stmt, err := tx.Prepare(`
+	stmt, err := db.Prepare(`
 UPDATE catalog_memberships
 SET added_on = ?, added_on_source = 'announcement', source_url = ?
 WHERE id = ?
+  AND removed_on IS NULL
   AND (
     added_on IS NULL
     OR date(added_on) != ?
@@ -264,9 +294,6 @@ WHERE id = ?
 			return 0, fmt.Errorf("rows affected: %w", err)
 		}
 		changed += n
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, err
 	}
 	return changed, nil
 }

@@ -224,12 +224,13 @@ func fetchBlogDocumentOnce(ctx context.Context, client *http.Client, rawURL stri
 }
 
 var (
-	publishedRE = regexp.MustCompile(`(?is)<time[^>]*class="[^"]*\bentry-date\b[^"]*\bpublished\b[^"]*"[^>]*datetime="([^"]+)"`)
-	contentRE   = regexp.MustCompile(`(?is)<div[^>]*class="[^"]*\bentry-content\b[^"]*"[^>]*>(.*?)(?:<div[^>]*class="[^"]*\bpost-single__footer\b|</article>)`)
-	blockRE     = regexp.MustCompile(`(?is)<(h[1-4]|p|li)\b[^>]*>.*?</(?:h[1-4]|p|li)>`)
-	tagRE       = regexp.MustCompile(`(?is)<[^>]+>`)
-	spaceRE     = regexp.MustCompile(`\s+`)
-	monthDayRE  = regexp.MustCompile(`(?i)\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?\b`)
+	publishedRE       = regexp.MustCompile(`(?is)<time[^>]*class="[^"]*\bentry-date\b[^"]*\bpublished\b[^"]*"[^>]*datetime="([^"]+)"`)
+	contentRE         = regexp.MustCompile(`(?is)<div[^>]*class="[^"]*\bentry-content\b[^"]*"[^>]*>(.*?)(?:<div[^>]*class="[^"]*\bpost-single__footer\b|</article>)`)
+	blockRE           = regexp.MustCompile(`(?is)<(h[1-4]|p|li)\b[^>]*>.*?</(?:h[1-4]|p|li)>`)
+	tagRE             = regexp.MustCompile(`(?is)<[^>]+>`)
+	spaceRE           = regexp.MustCompile(`\s+`)
+	monthDayRE        = regexp.MustCompile(`(?i)\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?\b`)
+	nonTurkeyRegionRE = regexp.MustCompile(`\bin\s+(?:the\s+)?(?:us|uk|japan)\b|\b(?:uk|japan)\s+and\s+(?:japan|uk)\b`)
 )
 
 type articleBlock struct {
@@ -390,8 +391,12 @@ func dateFromParts(monthName, dayText string, published time.Time) (time.Time, b
 		return time.Time{}, false
 	}
 	year := published.Year()
-	if int(month) < int(published.Month())-6 {
+	monthDelta := int(month) - int(published.Month())
+	switch {
+	case monthDelta < -6:
 		year++
+	case monthDelta > 6:
+		year--
 	}
 	t := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 	return t, t.Month() == month && t.Day() == day
@@ -499,8 +504,7 @@ func gameSpecificDate(blocks []articleBlock, title string, published time.Time) 
 			continue
 		}
 		lower := strings.ToLower(block.text)
-		if (strings.Contains(lower, "in the us") || strings.Contains(lower, "in us") ||
-			strings.Contains(lower, "uk and japan")) &&
+		if nonTurkeyRegionRE.MatchString(lower) &&
 			!strings.Contains(lower, "globally") && !strings.Contains(lower, "all other regions") {
 			continue
 		}
@@ -619,6 +623,36 @@ func titleMatchKeys(s string) map[string]bool {
 	if full == "" {
 		return keys
 	}
+	for _, variant := range safeTitleVariants(full) {
+		addTitleMatchKeys(keys, variant)
+	}
+	return keys
+}
+
+// safeTitleVariants adds only source-specific spelling variants that are known
+// not to change the identity of a game. They are kept out of
+// NormalizeCatalogTitle because that function is also used for comparing
+// titles where such a Store-specific rewrite would be surprising.
+func safeTitleVariants(title string) []string {
+	variants := []string{title}
+	words := strings.Fields(title)
+	for i, word := range words {
+		if word != "farcry" {
+			continue
+		}
+		aliasWords := append([]string(nil), words[:i]...)
+		aliasWords = append(aliasWords, "far", "cry")
+		aliasWords = append(aliasWords, words[i+1:]...)
+		variants = append(variants, strings.Join(aliasWords, " "))
+		break
+	}
+	return variants
+}
+
+func addTitleMatchKeys(keys map[string]bool, full string) {
+	if full == "" {
+		return
+	}
 	keys[full] = true
 	words := strings.Fields(full)
 	drop := map[string]bool{"ps4": true, "ps5": true}
@@ -628,20 +662,33 @@ func titleMatchKeys(s string) map[string]bool {
 			noPlatform = append(noPlatform, word)
 		}
 	}
-	trimmed := strings.Join(noPlatform, " ")
-	trimmed = strings.TrimSuffix(trimmed, " and")
-	if trimmed != "" {
-		keys[trimmed] = true
+	trimmed := strings.TrimSuffix(strings.Join(noPlatform, " "), " and")
+	if trimmed == "" {
+		return
 	}
+	keys[trimmed] = true
+
+	// Store sometimes appends the subscription name in parentheses. By this
+	// point punctuation and platform labels have already been removed, so only
+	// the exact known suffixes can be discarded.
+	for _, suffix := range []string{" playstation plus extra", " playstation plus"} {
+		if base := strings.TrimSuffix(trimmed, suffix); base != trimmed && base != "" {
+			keys[base] = true
+			addEditionTitleKeys(keys, base)
+		}
+	}
+	addEditionTitleKeys(keys, trimmed)
+}
+
+func addEditionTitleKeys(keys map[string]bool, title string) {
 	for _, suffix := range []string{
 		" standard edition", " digital deluxe edition", " deluxe edition",
 		" ultimate edition", " complete edition", " game of the year edition",
 	} {
-		if base := strings.TrimSuffix(trimmed, suffix); base != trimmed && base != "" {
+		if base := strings.TrimSuffix(title, suffix); base != title && base != "" {
 			keys[base] = true
 		}
 	}
-	return keys
 }
 
 func titleSimilarity(a, b string) float64 {

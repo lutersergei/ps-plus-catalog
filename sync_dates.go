@@ -93,12 +93,21 @@ func syncCatalogDates(
 	stats.Cached = cacheStats.Cached
 	stats.ParseErrors = cacheStats.ParseErrors
 
-	storedCandidates, err := store.CatalogDateCandidates(db)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return stats, err
+	}
+	defer tx.Rollback()
+	if err := store.AcquireCatalogSyncLock(tx); err != nil {
+		return stats, err
+	}
+
+	storedCandidates, err := store.CatalogDateCandidates(tx)
 	if err != nil {
 		return stats, err
 	}
 	stats.Candidates = len(storedCandidates)
-	targets, err := store.CurrentCatalogDateTargets(db)
+	targets, err := store.CurrentCatalogDateTargets(tx)
 	if err != nil {
 		return stats, err
 	}
@@ -113,12 +122,18 @@ func syncCatalogDates(
 	stats.UnmatchedGames = matchResult.UnmatchedGames
 	stats.Ambiguous = len(matchResult.AmbiguousGames)
 	stats.Unmatched = len(matchResult.UnmatchedGames)
-	stats.Updated, err = store.ApplyCatalogDateChanges(
-		db,
+	stats.Updated, err = store.ApplyCatalogDateChangesTx(
+		tx,
 		matchResult.Matches,
 		matchResult.ResetMembershipIDs,
 	)
-	return stats, err
+	if err != nil {
+		return stats, err
+	}
+	if err := tx.Commit(); err != nil {
+		return stats, err
+	}
+	return stats, nil
 }
 
 // refreshCatalogAnnouncementCache обновляет только устаревшие разобранные

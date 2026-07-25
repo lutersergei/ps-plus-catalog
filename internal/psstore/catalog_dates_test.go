@@ -194,6 +194,61 @@ which released into the service December 8.</p>
 	assertAdditionDate(t, got.Games, "Assassin's Creed Mirage", "2025-12-16")
 }
 
+func TestDateFromPartsInfersYearAcrossPublicationBoundary(t *testing.T) {
+	tests := []struct {
+		name      string
+		published string
+		month     string
+		day       string
+		want      string
+	}{
+		{
+			name:      "previous year",
+			published: "2026-01-10",
+			month:     "December",
+			day:       "16",
+			want:      "2025-12-16",
+		},
+		{
+			name:      "next year",
+			published: "2025-12-10",
+			month:     "January",
+			day:       "15",
+			want:      "2026-01-15",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			published := dateForTest(tt.published)
+			got, ok := dateFromParts(tt.month, tt.day, published)
+			if !ok {
+				t.Fatalf("dateFromParts returned ok=%v", ok)
+			}
+			if got.Format("2006-01-02") != tt.want {
+				t.Fatalf("date=%s, want %s", got.Format("2006-01-02"), tt.want)
+			}
+		})
+	}
+}
+
+func TestParseCatalogAnnouncementIgnoresSingleRegionDates(t *testing.T) {
+	raw := announcementHTML("2026-07-15T08:30:00-07:00", `
+<p>UK Only Game will be available in the UK on July 15.</p>
+<p>Japan Only Game will be available in Japan on July 16.</p>
+<p>All other titles will be available on July 21.</p>
+<h2>PlayStation Plus Extra and Premium | Game Catalog</h2>
+<p><strong>UK Only Game | PS5</strong></p>
+<p><strong>Japan Only Game | PS5</strong></p>
+<h2>PlayStation Plus Premium</h2>`)
+
+	got, err := ParseCatalogAnnouncement(raw, AnnouncementRef{URL: "https://blog.playstation.com/example"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	assertAdditionDate(t, got.Games, "UK Only Game", "2026-07-21")
+	assertAdditionDate(t, got.Games, "Japan Only Game", "2026-07-21")
+}
+
 func TestMatchCatalogAdditionNormalizesStoreEditionAndChoosesLatestReturn(t *testing.T) {
 	candidates := []CatalogAddition{
 		{Title: "Far Cry 6", AddedOn: dateForTest("2023-01-17")},
@@ -209,6 +264,28 @@ func TestMatchCatalogAdditionNormalizesStoreEditionAndChoosesLatestReturn(t *tes
 	}
 	if got.AddedOn.Format("2006-01-02") != "2026-07-21" {
 		t.Fatalf("date=%s", got.AddedOn.Format("2006-01-02"))
+	}
+}
+
+func TestMatchCatalogAdditionNormalizesCompactStoreTitle(t *testing.T) {
+	got, found, ambiguous := MatchCatalogAddition(
+		"FARCRY 6",
+		"FARCRY 6",
+		[]CatalogAddition{{Title: "Far Cry 6", AddedOn: dateForTest("2026-07-21")}},
+	)
+	if !found || ambiguous || got.Title != "Far Cry 6" {
+		t.Fatalf("got=%+v found=%v ambiguous=%v", got, found, ambiguous)
+	}
+}
+
+func TestMatchCatalogAdditionStripsStoreSubscriptionSuffix(t *testing.T) {
+	got, found, ambiguous := MatchCatalogAddition(
+		"Ghost of Tsushima DIRECTOR’S CUT (PlayStation Plus)",
+		"Ghost of Tsushima DIRECTOR’S CUT (PlayStation Plus)",
+		[]CatalogAddition{{Title: "Ghost Of Tsushima Director’s Cut", AddedOn: dateForTest("2026-07-21")}},
+	)
+	if !found || ambiguous || got.Title != "Ghost Of Tsushima Director’s Cut" {
+		t.Fatalf("got=%+v found=%v ambiguous=%v", got, found, ambiguous)
 	}
 }
 
