@@ -80,6 +80,15 @@ func (g GameView) CatalogAddedLabel() string {
 	return g.CatalogAddedOn.Time.Format("02.01.2006")
 }
 
+// CatalogAddedShortLabel форматирует календарную дату добавления в коротком
+// виде ДД.ММ.ГГ для компактного бейджа на обложке карточки.
+func (g GameView) CatalogAddedShortLabel() string {
+	if !g.CatalogAddedOn.Valid {
+		return ""
+	}
+	return g.CatalogAddedOn.Time.Format("02.01.06")
+}
+
 // CatalogAddedTitle объясняет точность даты: официальный анонс даёт точный
 // день, observed означает первый успешный снимок, в котором замечена игра.
 func (g GameView) CatalogAddedTitle() string {

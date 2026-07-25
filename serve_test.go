@@ -342,14 +342,67 @@ func TestIndexTemplateRendersCatalogAddedDateAndSource(t *testing.T) {
 	}
 	body := buf.String()
 	for _, want := range []string{
-		`Добавлено`,
-		`21.07.2026`,
+		`added-badge`,
+		`21.07.26`,
 		`https://blog.playstation.com/example/`,
 		`Дата добавления по официальному анонсу PlayStation`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("rendered template missing %q", want)
 		}
+	}
+}
+
+func TestIndexTemplateRendersAddedDateBadgeObserved(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	added := time.Date(2023, 1, 15, 0, 0, 0, 0, time.UTC)
+	data := pageData{
+		Result: store.ListResult{
+			Games: []store.GameView{{
+				ID:                 "g2",
+				Title:              "Some Game",
+				CatalogAddedOn:     sql.NullTime{Time: added, Valid: true},
+				CatalogAddedSource: sql.NullString{String: "observed", Valid: true},
+			}},
+			Total: 1, Page: 1, PageSize: pageSize, TotalPages: 1,
+		},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	body := buf.String()
+	if !strings.Contains(body, `class="added-badge observed"`) {
+		t.Fatalf("observed бейдж не отрендерен: %s", body)
+	}
+	if !strings.Contains(body, `15.01.23`) {
+		t.Fatalf("короткая дата 15.01.23 не найдена: %s", body)
+	}
+	if strings.Contains(body, `<a class="added-badge`) {
+		t.Fatalf("observed без source_url не должен быть ссылкой: %s", body)
+	}
+}
+
+func TestIndexTemplateRendersNoAddedDateBadge(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	data := pageData{
+		Result: store.ListResult{
+			Games: []store.GameView{{ID: "g3", Title: "No Date Game"}},
+			Total: 1, Page: 1, PageSize: pageSize, TotalPages: 1,
+		},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if strings.Contains(buf.String(), `class="added-badge`) {
+		t.Fatalf("бейдж не должен рендериться без даты: %s", buf.String())
 	}
 }
 
@@ -598,5 +651,42 @@ func TestHandleIndexIgnoresSliderEdgeValues(t *testing.T) {
 		if strings.Contains(body, absent) {
 			t.Fatalf("BaseQuery не должен содержать %q, body=%q", absent, body)
 		}
+	}
+}
+
+func TestIndexTemplateRendersAddedDateBadge(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	added := time.Date(2022, 6, 23, 0, 0, 0, 0, time.UTC)
+	data := pageData{
+		Result: store.ListResult{
+			Games: []store.GameView{{
+				ID:                 "g1",
+				Title:              "Horizon Forbidden West",
+				CatalogAddedOn:     sql.NullTime{Time: added, Valid: true},
+				CatalogAddedSource: sql.NullString{String: "announcement", Valid: true},
+				CatalogSourceURL:   sql.NullString{String: "https://example.com/ann", Valid: true},
+			}},
+			Total: 1, Page: 1, PageSize: pageSize, TotalPages: 1,
+		},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	body := buf.String()
+	if !strings.Contains(body, `added-badge announcement`) {
+		t.Fatalf("бейдж announcement не отрендерен: %s", body)
+	}
+	if !strings.Contains(body, `23.06.22`) {
+		t.Fatalf("короткая дата 23.06.22 не найдена: %s", body)
+	}
+	if !strings.Contains(body, `href="https://example.com/ann"`) {
+		t.Fatalf("бейдж не стал ссылкой на источник: %s", body)
+	}
+	if strings.Contains(body, `class="gadded"`) {
+		t.Fatalf("старая строка gadded должна быть удалена: %s", body)
 	}
 }

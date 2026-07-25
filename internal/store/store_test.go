@@ -1050,6 +1050,17 @@ func TestGamesNeedingHLTBRefreshesStaleRowsWithURL(t *testing.T) {
 	}
 }
 
+func TestGameViewCatalogAddedShortLabel(t *testing.T) {
+	g := GameView{}
+	if g.CatalogAddedShortLabel() != "" {
+		t.Fatalf("пустая дата должна давать пустую строку")
+	}
+	withDate := GameView{CatalogAddedOn: sql.NullTime{Time: time.Date(2022, 6, 23, 0, 0, 0, 0, time.UTC), Valid: true}}
+	if got := withDate.CatalogAddedShortLabel(); got != "23.06.22" {
+		t.Fatalf("short label=%q, want 23.06.22", got)
+	}
+}
+
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
