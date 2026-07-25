@@ -109,6 +109,67 @@ func TestSyncScoresURLBackfillPreservesExistingRatings(t *testing.T) {
 	}
 }
 
+func TestSyncCatalogRecordsMembershipPeriods(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	snapshots := []string{
+		`[{"catalogKey":"A","count":2,"games":[
+			{"productId":"g1","name":"Game 1"},
+			{"productId":"g2","name":"Game 2"}
+		]}]`,
+		`[{"catalogKey":"A","count":2,"games":[
+			{"productId":"g2","name":"Game 2"},
+			{"productId":"g3","name":"Game 3"}
+		]}]`,
+	}
+	request := 0
+	client := &http.Client{Transport: syncRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.Host != "www.playstation.com" {
+			t.Fatalf("unexpected host: %s", req.URL.Host)
+		}
+		if request >= len(snapshots) {
+			t.Fatalf("unexpected catalog request %d", request+1)
+		}
+		body := snapshots[request]
+		request++
+		return syncTestResponse(http.StatusOK, body), nil
+	})}
+
+	if err := syncCatalog(context.Background(), db, client, false); err != nil {
+		t.Fatalf("first sync: %v", err)
+	}
+	var initialUnknown int
+	if err := db.QueryRow(`
+SELECT COUNT(*) FROM catalog_memberships
+WHERE removed_on IS NULL AND added_on IS NULL`).Scan(&initialUnknown); err != nil {
+		t.Fatalf("read initial periods: %v", err)
+	}
+	if initialUnknown != 2 {
+		t.Fatalf("исходных периодов без придуманной даты=%d, ждали 2", initialUnknown)
+	}
+
+	if err := syncCatalog(context.Background(), db, client, false); err != nil {
+		t.Fatalf("second sync: %v", err)
+	}
+	var g1Closed, g3Observed int
+	if err := db.QueryRow(`
+SELECT
+  EXISTS(SELECT 1 FROM catalog_memberships WHERE game_id = 'g1' AND removed_on IS NOT NULL),
+  EXISTS(SELECT 1 FROM catalog_memberships
+         WHERE game_id = 'g3' AND removed_on IS NULL
+           AND added_on IS NOT NULL AND added_on_source = 'observed')
+`).Scan(&g1Closed, &g3Observed); err != nil {
+		t.Fatalf("read changed periods: %v", err)
+	}
+	if g1Closed != 1 || g3Observed != 1 {
+		t.Fatalf("g1Closed=%d g3Observed=%d, ждали 1/1", g1Closed, g3Observed)
+	}
+}
+
 type syncRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f syncRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

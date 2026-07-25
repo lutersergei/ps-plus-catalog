@@ -19,13 +19,18 @@ func main() {
 	}
 
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: ps-extra <sync|serve> [flags]")
+		fmt.Fprintln(os.Stderr, "usage: ps-extra <sync|sync-dates|serve> [flags]")
 		os.Exit(2)
 	}
 	switch os.Args[1] {
 	case "sync":
 		if err := runSync(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "sync error:", err)
+			os.Exit(1)
+		}
+	case "sync-dates":
+		if err := runSyncDates(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "sync-dates error:", err)
 			os.Exit(1)
 		}
 	case "serve":

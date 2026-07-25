@@ -11,6 +11,8 @@
 | `gameslist_sample.json` | то же, усечённый фрагмент | 2026-06-18 | компактная фикстура парсера |
 | `ps_store_categorygrid_allgames.json` | внутренний эндпоинт PS Store category grid | 2026-06-18 | исследование формата (см. `docs/research/`) |
 | `metacritic_death_stranding.html` | `metacritic.com/game/death-stranding/` (фрагмент страницы) | 2026-06-18 | тест извлечения Metascore |
+| `playstation_blog_catalog_2022_legacy.html` | `blog.playstation.com`, стартовый анонс PS Plus | 2026-07-25 | legacy-структура списка и европейская дата запуска |
+| `playstation_blog_catalog_2026_regional.html` | `blog.playstation.com`, июльский анонс каталога | 2026-07-25 | региональная дата и исключение для отдельной игры |
 
 Замечания:
 

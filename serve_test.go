@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/lutersergei/ps-plus-catalog/internal/store"
 )
@@ -311,6 +312,44 @@ func TestIndexTemplateRendersSidebarFilterLayout(t *testing.T) {
 	}
 	if strings.Index(body, `name="sort"`) > strings.Index(body, `class="results-panel"`) {
 		t.Fatalf("sort control should render inside filter sidebar")
+	}
+	if !strings.Contains(body, `value="added"`) || !strings.Contains(body, `По дате добавления`) {
+		t.Fatalf("нет сортировки по дате добавления")
+	}
+}
+
+func TestIndexTemplateRendersCatalogAddedDateAndSource(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	data := pageData{
+		Result: store.ListResult{
+			Games: []store.GameView{{
+				ID:                 "g1",
+				Title:              "Game",
+				CatalogAddedOn:     sql.NullTime{Time: time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC), Valid: true},
+				CatalogAddedSource: sql.NullString{String: "announcement", Valid: true},
+				CatalogSourceURL:   sql.NullString{String: "https://blog.playstation.com/example/", Valid: true},
+			}},
+			Page:     1,
+			PageSize: pageSize,
+		},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`Добавлено`,
+		`21.07.2026`,
+		`https://blog.playstation.com/example/`,
+		`Дата добавления по официальному анонсу PlayStation`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("rendered template missing %q", want)
+		}
 	}
 }
 

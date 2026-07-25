@@ -25,7 +25,7 @@ type ListParams struct {
 	ReviewsTo     int      // верхняя граница суммы пользовательских оценок MC+OC (0 = не задана)
 	HLTBFromHours float64  // нижняя граница Main+Sides в часах (0 = не задана)
 	HLTBToHours   float64  // верхняя граница Main+Sides в часах (0 = не задана)
-	Sort          string   // "year" | "average" | "critic" | "player" | "title" | "hltbmain" | "reviews"
+	Sort          string   // "year" | "average" | "critic" | "player" | "title" | "hltbmain" | "reviews" | "added"
 	Order         string   // "asc" | "desc"
 	Page          int      // с 1
 	PageSize      int
@@ -57,6 +57,9 @@ type GameView struct {
 	HLTBMainSec           sql.NullInt64 // Main + Sides, секунды
 	HLTBRating            sql.NullInt64 // рейтинг HLTB (0–100)
 	HLTBPageURL           sql.NullString
+	CatalogAddedOn        sql.NullTime
+	CatalogAddedSource    sql.NullString
+	CatalogSourceURL      sql.NullString
 	RuSub                 bool // есть русские субтитры/интерфейс
 	RuVoice               bool // есть русская озвучка
 }
@@ -67,6 +70,26 @@ func (g GameView) HLTBHours() float64 {
 		return 0
 	}
 	return float64(g.HLTBMainSec.Int64) / 3600
+}
+
+// CatalogAddedLabel форматирует календарную дату добавления для карточки.
+func (g GameView) CatalogAddedLabel() string {
+	if !g.CatalogAddedOn.Valid {
+		return ""
+	}
+	return g.CatalogAddedOn.Time.Format("02.01.2006")
+}
+
+// CatalogAddedTitle объясняет точность даты: официальный анонс даёт точный
+// день, observed означает первый успешный снимок, в котором замечена игра.
+func (g GameView) CatalogAddedTitle() string {
+	if !g.CatalogAddedOn.Valid {
+		return ""
+	}
+	if g.CatalogAddedSource.Valid && g.CatalogAddedSource.String == "announcement" {
+		return "Дата добавления по официальному анонсу PlayStation"
+	}
+	return "Дата первого наблюдения в каталоге"
 }
 
 // RuStoreURL — ссылка на страницу игры в русском PS Store. Каталог собирается
@@ -170,9 +193,19 @@ var sortColumns = map[string]string{
 	"title":    "title COLLATE NOCASE",
 	"hltbmain": "hltb_main_extra",
 	"reviews":  reviewCountExpr,
+	"added":    currentCatalogAddedExpr,
 }
 
 const reviewCountExpr = "(COALESCE(metacritic_user_count, 0) + COALESCE(opencritic_player_count, 0))"
+
+const (
+	currentCatalogAddedExpr = `(SELECT cm.added_on FROM catalog_memberships cm
+		WHERE cm.game_id = games.id AND cm.removed_on IS NULL LIMIT 1)`
+	currentCatalogAddedSourceExpr = `(SELECT cm.added_on_source FROM catalog_memberships cm
+		WHERE cm.game_id = games.id AND cm.removed_on IS NULL LIMIT 1)`
+	currentCatalogSourceURLExpr = `(SELECT cm.source_url FROM catalog_memberships cm
+		WHERE cm.game_id = games.id AND cm.removed_on IS NULL LIMIT 1)`
+)
 
 // Границы пользовательских параметров: защита от чрезмерных значений из query
 // string (раздутый SQL, переполнение OFFSET и т.п.).
@@ -340,6 +373,8 @@ func IndexBuckets(db *sql.DB, p ListParams) ([]IndexBucket, error) {
 		return valueIndexBuckets(db, p, hltbThresholdExpr, hltbBucketLabel)
 	case "reviews":
 		return valueIndexBuckets(db, p, reviewCountThresholdExpr, reviewCountBucketLabel)
+	case "added":
+		return AddedIndexBuckets(db, p)
 	default:
 		return nil, nil
 	}
@@ -523,6 +558,70 @@ func TitleIndexBuckets(db *sql.DB, p ListParams) ([]IndexBucket, error) {
 	return buckets, nil
 }
 
+var monthNames = []string{"Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"}
+
+// AddedIndexBuckets возвращает месячные бакеты для сортировки по текущему
+// присутствию в каталоге. Смещение относится ко всей выдаче, а не к странице.
+func AddedIndexBuckets(db *sql.DB, p ListParams) ([]IndexBucket, error) {
+	NormalizeParams(&p)
+	whereSQL, args := buildListWhere(p)
+	orderSuffix := ""
+	if strings.EqualFold(p.Order, "desc") {
+		orderSuffix = " DESC"
+	}
+	rows, err := db.Query(`
+		SELECT COALESCE(strftime('%Y-%m', `+currentCatalogAddedExpr+`), ''), COUNT(*)
+		FROM games
+		`+whereSQL+`
+		GROUP BY 1
+		ORDER BY 1`+orderSuffix, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type group struct {
+		ym string
+		n  int
+	}
+	var groups []group
+	for rows.Next() {
+		var g group
+		if err := rows.Scan(&g.ym, &g.n); err != nil {
+			return nil, err
+		}
+		groups = append(groups, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	var buckets []IndexBucket
+	offset := 0
+	var noDateCount int
+	for _, g := range groups {
+		if g.ym == "" || len(g.ym) < 7 {
+			noDateCount += g.n
+			continue
+		}
+		yr := g.ym[:4]
+		mth := g.ym[5:7]
+		mn, _ := strconv.Atoi(mth)
+		if mn < 1 || mn > 12 {
+			noDateCount += g.n
+			continue
+		}
+		label := yr + " " + monthNames[mn-1]
+		buckets = append(buckets, IndexBucket{Label: label, Offset: offset})
+		offset += g.n
+	}
+	if noDateCount > 0 {
+		buckets = append(buckets, IndexBucket{Label: "Без даты", Offset: offset})
+	}
+
+	return buckets, nil
+}
+
 // ListGames возвращает отфильтрованную, отсортированную и постранично нарезанную
 // выборку игр.
 func ListGames(db *sql.DB, p ListParams) (ListResult, error) {
@@ -559,7 +658,8 @@ SELECT id, title, COALESCE(title_en,''), COALESCE(release_year,0), COALESCE(plat
        COALESCE(store_url,''), metacritic_score, metacritic_url, metacritic_user_score, metacritic_user_count,
        opencritic_score, opencritic_url, opencritic_player_score, opencritic_player_count,
        average_score, critic_average_score, player_average_score,
-       hltb_main_extra, hltb_rating, hltb_url, COALESCE(screen_langs,''), COALESCE(spoken_langs,'')
+       hltb_main_extra, hltb_rating, hltb_url, COALESCE(screen_langs,''), COALESCE(spoken_langs,''),
+       ` + currentCatalogAddedExpr + `, ` + currentCatalogAddedSourceExpr + `, ` + currentCatalogSourceURLExpr + `
 FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
 	args = append(args, p.PageSize, (p.Page-1)*p.PageSize)
 
@@ -577,7 +677,8 @@ FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
 			&g.StoreURL, &g.Metacritic, &g.MetacriticPageURL, &g.MetacriticUser, &g.MetacriticUserCount,
 			&g.OpenCritic, &g.OpenCriticPageURL, &g.OpenCriticPlayer, &g.OpenCriticPlayerCount,
 			&g.Average, &g.CriticAverage, &g.PlayerAverage,
-			&g.HLTBMainSec, &g.HLTBRating, &g.HLTBPageURL, &screenLangs, &spokenLangs); err != nil {
+			&g.HLTBMainSec, &g.HLTBRating, &g.HLTBPageURL, &screenLangs, &spokenLangs,
+			&g.CatalogAddedOn, &g.CatalogAddedSource, &g.CatalogSourceURL); err != nil {
 			return res, err
 		}
 		g.RuSub = strings.Contains(screenLangs, `"ru"`)

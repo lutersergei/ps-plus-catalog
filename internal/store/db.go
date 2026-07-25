@@ -54,6 +54,37 @@ CREATE TABLE IF NOT EXISTS game_source_genres (
 	PRIMARY KEY (game_id, source, genre)
 );
 CREATE INDEX IF NOT EXISTS idx_game_source_genres_source_genre ON game_source_genres(source, genre);
+CREATE TABLE IF NOT EXISTS catalog_memberships (
+	id              INTEGER PRIMARY KEY AUTOINCREMENT,
+	game_id         TEXT NOT NULL,
+	added_on        DATE,
+	removed_on      DATE,
+	first_seen_at   TIMESTAMP NOT NULL,
+	last_seen_at    TIMESTAMP NOT NULL,
+	added_on_source TEXT,
+	source_url      TEXT,
+	FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_catalog_memberships_open
+	ON catalog_memberships(game_id) WHERE removed_on IS NULL;
+CREATE INDEX IF NOT EXISTS idx_catalog_memberships_game
+	ON catalog_memberships(game_id, first_seen_at);
+CREATE TABLE IF NOT EXISTS catalog_announcements (
+	url             TEXT PRIMARY KEY,
+	last_modified   TEXT NOT NULL,
+	parser_version  INTEGER NOT NULL DEFAULT 0,
+	published_on    DATE NOT NULL,
+	fetched_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS catalog_announcement_games (
+	announcement_url TEXT NOT NULL,
+	game_title       TEXT NOT NULL,
+	added_on         DATE NOT NULL,
+	PRIMARY KEY (announcement_url, game_title),
+	FOREIGN KEY (announcement_url) REFERENCES catalog_announcements(url) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_catalog_announcement_games_added
+	ON catalog_announcement_games(added_on);
 `
 
 // migrations добавляет недостающие колонки в уже существующую БД (idempotent).
@@ -76,6 +107,7 @@ var migrations = []string{
 	`ALTER TABLE games ADD COLUMN critic_average_score REAL`,
 	`ALTER TABLE games ADD COLUMN player_average_score REAL`,
 	`ALTER TABLE games ADD COLUMN metacritic_url TEXT`,
+	`ALTER TABLE catalog_announcements ADD COLUMN parser_version INTEGER NOT NULL DEFAULT 0`,
 }
 
 // Open открывает базу SQLite по указанному пути и применяет миграции.

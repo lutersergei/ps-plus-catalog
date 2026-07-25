@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 )
@@ -12,6 +13,7 @@ import (
 type dbHandle interface {
 	Exec(query string, args ...any) (sql.Result, error)
 	Prepare(query string) (*sql.Stmt, error)
+	QueryRow(query string, args ...any) *sql.Row
 }
 
 // GameRow — данные каталога одной игры для записи в БД (без оценок).
@@ -78,6 +80,124 @@ func CountActive(db *sql.DB) (int, error) {
 		return 0, err
 	}
 	return n, nil
+}
+
+// CatalogSnapshotResult описывает изменения членства в каталоге между двумя
+// успешными снимками. Initial означает первый снимок, для которого нет
+// предыдущего состояния и потому нельзя честно назвать дату добавления.
+type CatalogSnapshotResult struct {
+	Initial bool
+	Added   int64
+	Removed int64
+}
+
+// RecordCatalogSnapshot обновляет периоды присутствия игр в PS Plus Extra.
+//
+// Для первого снимка added_on остаётся NULL: наличие игры в момент первого
+// наблюдения не доказывает, что её добавили в этот день. На следующих снимках
+// новые и вернувшиеся игры получают observedOn и источник "observed". Более
+// точную дату из официального анонса можно записать через SetCatalogAddedDate.
+func RecordCatalogSnapshot(db dbHandle, presentIDs []string, observedAt time.Time) (CatalogSnapshotResult, error) {
+	var result CatalogSnapshotResult
+	if len(presentIDs) == 0 {
+		return result, nil
+	}
+
+	var periods int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM catalog_memberships`).Scan(&periods); err != nil {
+		return result, err
+	}
+	result.Initial = periods == 0
+
+	firstSeen := observedAt.UTC().Format(time.RFC3339Nano)
+	observedOn := observedAt.UTC().Format("2006-01-02")
+
+	insert, err := db.Prepare(`
+INSERT INTO catalog_memberships
+	(game_id, added_on, first_seen_at, last_seen_at, added_on_source)
+SELECT ?, ?, ?, ?, ?
+WHERE NOT EXISTS (
+	SELECT 1 FROM catalog_memberships WHERE game_id = ? AND removed_on IS NULL
+)`)
+	if err != nil {
+		return result, err
+	}
+	defer insert.Close()
+
+	var addedOn, source any
+	if !result.Initial {
+		addedOn = observedOn
+		source = "observed"
+	}
+	for _, id := range presentIDs {
+		res, err := insert.Exec(id, addedOn, firstSeen, firstSeen, source, id)
+		if err != nil {
+			return result, err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return result, err
+		}
+		result.Added += n
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(presentIDs)), ",")
+	presentArgs := make([]any, 0, len(presentIDs)+1)
+	presentArgs = append(presentArgs, firstSeen)
+	for _, id := range presentIDs {
+		presentArgs = append(presentArgs, id)
+	}
+	if _, err := db.Exec(`
+UPDATE catalog_memberships
+SET last_seen_at = ?
+WHERE removed_on IS NULL AND game_id IN (`+placeholders+`)`, presentArgs...); err != nil {
+		return result, err
+	}
+
+	missingArgs := make([]any, 0, len(presentIDs)+1)
+	missingArgs = append(missingArgs, observedOn)
+	for _, id := range presentIDs {
+		missingArgs = append(missingArgs, id)
+	}
+	res, err := db.Exec(`
+UPDATE catalog_memberships
+SET removed_on = ?
+WHERE removed_on IS NULL AND game_id NOT IN (`+placeholders+`)`, missingArgs...)
+	if err != nil {
+		return result, err
+	}
+	result.Removed, err = res.RowsAffected()
+	return result, err
+}
+
+// SetCatalogAddedDate заменяет наблюдаемую дату текущего периода на точную
+// дату из внешнего источника (обычно официального PlayStation Blog). Источник
+// обязателен, чтобы вызывающий код не мог молча потерять обновление.
+func SetCatalogAddedDate(db dbHandle, gameID string, addedOn time.Time, source, sourceURL string) error {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return errors.New("catalog added date source is required")
+	}
+	result, err := db.Exec(`
+UPDATE catalog_memberships
+SET added_on = ?, added_on_source = ?, source_url = ?
+WHERE id = (
+	SELECT id FROM catalog_memberships
+	WHERE game_id = ? AND removed_on IS NULL
+	ORDER BY first_seen_at DESC
+	LIMIT 1
+)`, addedOn.UTC().Format("2006-01-02"), source, strings.TrimSpace(sourceURL), gameID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // ScoreTarget — игра, которой нужны/устарели оценки.

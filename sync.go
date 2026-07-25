@@ -56,6 +56,12 @@ func runSync(args []string) error {
 	if err := syncCatalog(ctx, db, client, *allowShrink); err != nil {
 		return err
 	}
+	dateStats, err := syncCatalogDates(ctx, db, client, false, time.Now().UTC().Year())
+	if err != nil {
+		log.Printf("[dates] даты из анонсов не обновлены: %v", err)
+	} else {
+		printCatalogDateStats(dateStats, false)
+	}
 	if *skipScores {
 		return nil
 	}
@@ -205,6 +211,7 @@ func syncCatalog(ctx context.Context, db *sql.DB, client *http.Client, allowShri
 	defer tx.Rollback()
 
 	ids := make([]string, 0, len(games))
+	observedAt := time.Now().UTC()
 	for _, g := range games {
 		row := store.GameRow{
 			ID: g.ID, Title: g.Title, TitleEn: g.TitleEn,
@@ -221,6 +228,16 @@ func syncCatalog(ctx context.Context, db *sql.DB, client *http.Client, allowShri
 			return fmt.Errorf("set psstore genres %s: %w", g.ID, err)
 		}
 		ids = append(ids, g.ID)
+	}
+
+	membership, err := store.RecordCatalogSnapshot(tx, ids, observedAt)
+	if err != nil {
+		return fmt.Errorf("record catalog snapshot: %w", err)
+	}
+	if membership.Initial {
+		fmt.Printf("история каталога инициализирована: %d игр, дата добавления пока неизвестна\n", membership.Added)
+	} else if membership.Added > 0 {
+		fmt.Printf("обнаружено новых или вернувшихся игр: %d\n", membership.Added)
 	}
 
 	deactivated, err := store.DeactivateMissing(tx, ids)

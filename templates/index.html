@@ -255,6 +255,8 @@ a.reset { font-size: 13px; color: var(--muted); padding-bottom: 8px; }
 .gtitle a { color: var(--ink); text-decoration: none; }
 .gtitle a:hover { color: var(--cobalt); }
 .gmeta { color: var(--muted); font-size: 11px; margin-top: -4px; }
+.gadded { color: var(--muted); font-size: 10px; margin-top: -2px; }
+.gadded a { color: inherit; text-decoration: underline; text-decoration-style: dotted; }
 
 /* Пара вердиктов */
 .verdict { display: flex; gap: 6px; }
@@ -513,6 +515,7 @@ a.more { text-decoration: none; }
       <option value="player"   {{if eq $s "player"}}selected{{end}}>Вердикт игроков</option>
       <option value="reviews"  {{if eq $s "reviews"}}selected{{end}}>Количество оценок</option>
       <option value="hltbmain" {{if eq $s "hltbmain"}}selected{{end}}>Время прохождения</option>
+      <option value="added"    {{if eq $s "added"}}selected{{end}}>По дате добавления</option>
     </select>
   </div>
   <div class="f">
@@ -547,6 +550,11 @@ a.more { text-decoration: none; }
     <div class="gbody">
       <div class="gtitle"><a href="{{.RuStoreURL}}" target="_blank" rel="noopener">{{.Title}}</a></div>
       <div class="gmeta">{{if .ReleaseYear}}{{.ReleaseYear}}{{end}}{{if .Platforms}}{{if .ReleaseYear}} · {{end}}{{.Platforms}}{{end}}</div>
+      {{if .CatalogAddedOn.Valid}}
+      <div class="gadded" title="{{.CatalogAddedTitle}}">Добавлено
+        {{if .CatalogSourceURL.Valid}}<a href="{{.CatalogSourceURL.String}}" target="_blank" rel="noopener">{{.CatalogAddedLabel}}</a>{{else}}{{.CatalogAddedLabel}}{{end}}
+      </div>
+      {{end}}
 
       {{$w := .OCPlayerWeight}}
       <div class="verdict">

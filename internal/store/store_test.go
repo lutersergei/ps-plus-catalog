@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"math"
 	"net/url"
 	"path/filepath"
@@ -152,6 +153,281 @@ func TestDeactivateMissingAndCount(t *testing.T) {
 	}
 	if n, _ := CountActive(db); n != 3 {
 		t.Errorf("после деактивации активно %d, ждали 3", n)
+	}
+}
+
+func TestRecordCatalogSnapshotTracksInitialChangesAndReturn(t *testing.T) {
+	db := newTestDB(t, 2)
+	first := time.Date(2026, 7, 20, 23, 55, 0, 0, time.UTC)
+
+	initial, err := RecordCatalogSnapshot(db, []string{"g1", "g2"}, first)
+	if err != nil {
+		t.Fatalf("initial snapshot: %v", err)
+	}
+	if !initial.Initial || initial.Added != 2 || initial.Removed != 0 {
+		t.Fatalf("initial=%+v, ждали Initial=true Added=2 Removed=0", initial)
+	}
+
+	var initialAdded sql.NullString
+	if err := db.QueryRow(`
+SELECT added_on FROM catalog_memberships
+WHERE game_id = 'g1' AND removed_on IS NULL`).Scan(&initialAdded); err != nil {
+		t.Fatalf("read initial membership: %v", err)
+	}
+	if initialAdded.Valid {
+		t.Fatalf("первый снимок не должен придумывать дату добавления: %v", initialAdded)
+	}
+
+	if err := UpsertGame(db, GameRow{ID: "g3", Title: "Game 3"}); err != nil {
+		t.Fatalf("seed g3: %v", err)
+	}
+	second := time.Date(2026, 7, 21, 1, 5, 0, 0, time.UTC)
+	changed, err := RecordCatalogSnapshot(db, []string{"g2", "g3"}, second)
+	if err != nil {
+		t.Fatalf("second snapshot: %v", err)
+	}
+	if changed.Initial || changed.Added != 1 || changed.Removed != 1 {
+		t.Fatalf("changed=%+v, ждали Initial=false Added=1 Removed=1", changed)
+	}
+
+	var g1Removed, g3Added, g3Source string
+	if err := db.QueryRow(`
+SELECT
+  (SELECT date(removed_on) FROM catalog_memberships WHERE game_id = 'g1'),
+  (SELECT date(added_on) FROM catalog_memberships WHERE game_id = 'g3'),
+  (SELECT added_on_source FROM catalog_memberships WHERE game_id = 'g3')
+`).Scan(&g1Removed, &g3Added, &g3Source); err != nil {
+		t.Fatalf("read changes: %v", err)
+	}
+	if g1Removed != "2026-07-21" || g3Added != "2026-07-21" || g3Source != "observed" {
+		t.Fatalf("g1 removed=%q, g3 added=%q source=%q", g1Removed, g3Added, g3Source)
+	}
+
+	third := time.Date(2026, 8, 2, 8, 0, 0, 0, time.UTC)
+	returned, err := RecordCatalogSnapshot(db, []string{"g1", "g2", "g3"}, third)
+	if err != nil {
+		t.Fatalf("return snapshot: %v", err)
+	}
+	if returned.Added != 1 || returned.Removed != 0 {
+		t.Fatalf("returned=%+v, ждали новый период только для g1", returned)
+	}
+
+	var g1Periods int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM catalog_memberships WHERE game_id = 'g1'`).Scan(&g1Periods); err != nil {
+		t.Fatalf("count g1 periods: %v", err)
+	}
+	if g1Periods != 2 {
+		t.Fatalf("периодов g1=%d, ждали 2", g1Periods)
+	}
+
+	officialDate := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	const sourceURL = "https://blog.playstation.com/example/"
+	if err := SetCatalogAddedDate(db, "g1", officialDate, "announcement", sourceURL); err != nil {
+		t.Fatalf("set official date: %v", err)
+	}
+	var addedOn, source, url string
+	if err := db.QueryRow(`
+SELECT date(added_on), added_on_source, source_url
+FROM catalog_memberships
+WHERE game_id = 'g1' AND removed_on IS NULL`).Scan(&addedOn, &source, &url); err != nil {
+		t.Fatalf("read official date: %v", err)
+	}
+	if addedOn != "2026-08-01" || source != "announcement" || url != sourceURL {
+		t.Fatalf("added=%q source=%q url=%q", addedOn, source, url)
+	}
+}
+
+func TestCurrentCatalogDateTargetsIdentifiesInitialAndReturningPeriods(t *testing.T) {
+	db := newTestDB(t, 2)
+	first := time.Date(2026, 7, 1, 8, 0, 0, 0, time.UTC)
+	removed := time.Date(2026, 7, 10, 8, 0, 0, 0, time.UTC)
+	returned := time.Date(2026, 7, 20, 8, 0, 0, 0, time.UTC)
+
+	if _, err := RecordCatalogSnapshot(db, []string{"g1", "g2"}, first); err != nil {
+		t.Fatalf("initial snapshot: %v", err)
+	}
+	if _, err := RecordCatalogSnapshot(db, []string{"g2"}, removed); err != nil {
+		t.Fatalf("removal snapshot: %v", err)
+	}
+	if _, err := RecordCatalogSnapshot(db, []string{"g1", "g2"}, returned); err != nil {
+		t.Fatalf("return snapshot: %v", err)
+	}
+	if err := SetCatalogAddedDate(
+		db,
+		"g1",
+		time.Date(2025, 9, 16, 0, 0, 0, 0, time.UTC),
+		"announcement",
+		"https://example.com/stale",
+	); err != nil {
+		t.Fatalf("set stale date: %v", err)
+	}
+
+	targets, err := CurrentCatalogDateTargets(db)
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	byID := make(map[string]CatalogDateTarget, len(targets))
+	for _, target := range targets {
+		byID[target.GameID] = target
+	}
+	if !byID["g2"].Initial {
+		t.Fatalf("g2 target=%+v, want initial period", byID["g2"])
+	}
+	g1 := byID["g1"]
+	if g1.Initial || !g1.PreviousRemovedOn.Valid {
+		t.Fatalf("g1 target=%+v, want returning period with previous removal", g1)
+	}
+	if got := g1.PreviousRemovedOn.Time.Format("2006-01-02"); got != "2026-07-10" {
+		t.Fatalf("g1 previous removal=%s, want 2026-07-10", got)
+	}
+	changed, err := ApplyCatalogDateChanges(db, nil, []int64{g1.MembershipID})
+	if err != nil {
+		t.Fatalf("reset stale date: %v", err)
+	}
+	if changed != 1 {
+		t.Fatalf("changed=%d, want 1", changed)
+	}
+	var addedOn, source string
+	var sourceURL sql.NullString
+	if err := db.QueryRow(`
+SELECT date(added_on), added_on_source, source_url
+FROM catalog_memberships
+WHERE id = ?`, g1.MembershipID).Scan(&addedOn, &source, &sourceURL); err != nil {
+		t.Fatalf("read reset membership: %v", err)
+	}
+	if addedOn != "2026-07-20" || source != "observed" || sourceURL.Valid {
+		t.Fatalf("reset membership added=%q source=%q url=%v", addedOn, source, sourceURL)
+	}
+}
+
+func TestListGamesSortsByCatalogAddedDateWithUnknownLast(t *testing.T) {
+	db := newTestDB(t, 3)
+	observed := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := RecordCatalogSnapshot(db, []string{"g1", "g2", "g3"}, observed); err != nil {
+		t.Fatalf("initial snapshot: %v", err)
+	}
+	if err := SetCatalogAddedDate(db, "g1", time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC), "announcement", "https://example.com/june"); err != nil {
+		t.Fatalf("date g1: %v", err)
+	}
+	if err := SetCatalogAddedDate(db, "g2", time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC), "announcement", "https://example.com/july"); err != nil {
+		t.Fatalf("date g2: %v", err)
+	}
+
+	res, err := ListGames(db, ListParams{Sort: "added", Order: "desc", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if got, want := gameIDs(res.Games), []string{"g2", "g1", "g3"}; !sameStrings(got, want) {
+		t.Fatalf("added desc got %v, ждали %v", got, want)
+	}
+	if got := res.Games[0].CatalogAddedLabel(); got != "21.07.2026" {
+		t.Fatalf("added label=%q, ждали 21.07.2026", got)
+	}
+	if !res.Games[0].CatalogSourceURL.Valid || res.Games[0].CatalogSourceURL.String != "https://example.com/july" {
+		t.Fatalf("source URL=%v", res.Games[0].CatalogSourceURL)
+	}
+}
+
+func TestSetCatalogAddedDateRejectsEmptySource(t *testing.T) {
+	db := newTestDB(t, 1)
+	if _, err := RecordCatalogSnapshot(db, []string{"g1"}, time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if err := SetCatalogAddedDate(db, "g1", time.Now(), "", ""); err == nil {
+		t.Fatal("expected an error for an empty source")
+	}
+}
+
+func TestSetCatalogAddedDateReturnsNotFoundWithoutOpenMembership(t *testing.T) {
+	db := newTestDB(t, 1)
+	err := SetCatalogAddedDate(
+		db,
+		"g1",
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		"announcement",
+		"https://example.com/announcement",
+	)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("err=%v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestAddedIndexBucketsTreatsOrderCaseInsensitively(t *testing.T) {
+	db := newTestDB(t, 2)
+	observed := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := RecordCatalogSnapshot(db, []string{"g1", "g2"}, observed); err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if err := SetCatalogAddedDate(db, "g1", time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC), "announcement", ""); err != nil {
+		t.Fatalf("date g1: %v", err)
+	}
+	if err := SetCatalogAddedDate(db, "g2", time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC), "announcement", ""); err != nil {
+		t.Fatalf("date g2: %v", err)
+	}
+	buckets, err := AddedIndexBuckets(db, ListParams{Sort: "added", Order: "DESC", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("buckets: %v", err)
+	}
+	if len(buckets) != 2 || buckets[0].Label != "2026 Июл" || buckets[0].Offset != 0 || buckets[1].Label != "2026 Июн" || buckets[1].Offset != 1 {
+		t.Fatalf("buckets=%+v", buckets)
+	}
+}
+
+func TestAddedIndexBucketsSupportsGenreFilter(t *testing.T) {
+	db := newTestDB(t, 2)
+	observed := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := RecordCatalogSnapshot(db, []string{"g1", "g2"}, observed); err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if err := SetCatalogAddedDate(db, "g1", time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC), "announcement", ""); err != nil {
+		t.Fatalf("date g1: %v", err)
+	}
+	if err := SetGenres(db, "g1", []string{"Action"}); err != nil {
+		t.Fatalf("genres g1: %v", err)
+	}
+	if err := SetGenres(db, "g2", []string{"Adventure"}); err != nil {
+		t.Fatalf("genres g2: %v", err)
+	}
+
+	buckets, err := AddedIndexBuckets(db, ListParams{
+		Genres:   []string{"Action"},
+		Sort:     "added",
+		Order:    "desc",
+		Page:     1,
+		PageSize: 10,
+	})
+	if err != nil {
+		t.Fatalf("buckets: %v", err)
+	}
+	if len(buckets) != 1 || buckets[0].Label != "2026 Июн" || buckets[0].Offset != 0 {
+		t.Fatalf("buckets=%+v, want 2026 Июн @ 0", buckets)
+	}
+}
+
+// TestAddedIndexBucketsAppendsNoDateBucketAfterDatedGroups проверяет, что игры
+// без известной даты попадают в завершающий бакет «Без даты» с корректным
+// смещением, накопленным из датированных групп (без отдельного запроса COUNT).
+func TestAddedIndexBucketsAppendsNoDateBucketAfterDatedGroups(t *testing.T) {
+	db := newTestDB(t, 2)
+	observed := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	if _, err := RecordCatalogSnapshot(db, []string{"g1", "g2"}, observed); err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if err := SetCatalogAddedDate(db, "g1", time.Date(2026, 6, 10, 0, 0, 0, 0, time.UTC), "announcement", ""); err != nil {
+		t.Fatalf("date g1: %v", err)
+	}
+	buckets, err := AddedIndexBuckets(db, ListParams{Sort: "added", Order: "asc", Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("buckets: %v", err)
+	}
+	if len(buckets) != 2 {
+		t.Fatalf("buckets=%+v, want 2", buckets)
+	}
+	if buckets[0].Label != "2026 Июн" || buckets[0].Offset != 0 {
+		t.Fatalf("первый бакет=%+v, want 2026 Июн @ 0", buckets[0])
+	}
+	if buckets[1].Label != "Без даты" || buckets[1].Offset != 1 {
+		t.Fatalf("бакет без даты=%+v, want Без даты @ 1", buckets[1])
 	}
 }
 
