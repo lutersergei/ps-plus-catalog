@@ -1,6 +1,6 @@
 module github.com/lutersergei/ps-plus-catalog
 
-go 1.25.11
+go 1.25.12
 
 require modernc.org/sqlite v1.52.0
 

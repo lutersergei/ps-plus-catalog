@@ -1,5 +1,5 @@
 # --- build stage ---
-FROM golang:1.25 AS build
+FROM golang:1.25.12 AS build
 WORKDIR /src
 
 # Сначала зависимости (кэшируется, пока go.mod/go.sum не меняются)
@@ -9,7 +9,7 @@ RUN go mod download
 # Исходники (шаблон index.html встраивается через go:embed)
 COPY . .
 # Чистый Go SQLite (modernc) → CGO не нужен, бинарь статический
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ps-extra .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/ps-extra ./cmd/ps-extra
 
 # --- runtime stage ---
 FROM gcr.io/distroless/static-debian12:nonroot
