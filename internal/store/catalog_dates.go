@@ -197,6 +197,115 @@ type CatalogDateMatch struct {
 	SourceURL    string
 }
 
+// CatalogDateBackfillMatch — проверенная историческая дата для открытого
+// периода из базового снимка каталога.
+type CatalogDateBackfillMatch struct {
+	MembershipID int64
+	AddedOn      time.Time
+	SourceURL    string
+}
+
+// ApplyCatalogDateBackfillTx записывает проверенные исторические даты и явно
+// оставляет без даты спорные базовые периоды. Обновление ограничено открытыми
+// membership и выполняется внутри общей транзакции sync/sync-dates.
+func ApplyCatalogDateBackfillTx(
+	tx *sql.Tx,
+	matches []CatalogDateBackfillMatch,
+	keepNullMembershipIDs []int64,
+) (int64, error) {
+	if len(matches) == 0 && len(keepNullMembershipIDs) == 0 {
+		return 0, nil
+	}
+	if err := validateCatalogDateBackfillChanges(matches, keepNullMembershipIDs); err != nil {
+		return 0, err
+	}
+
+	var changed int64
+	clearStmt, err := tx.Prepare(`
+UPDATE catalog_memberships
+SET added_on = NULL, added_on_source = NULL, source_url = NULL
+WHERE id = ? AND removed_on IS NULL
+  AND (added_on IS NOT NULL OR added_on_source IS NOT NULL OR source_url IS NOT NULL)`)
+	if err != nil {
+		return 0, err
+	}
+	defer clearStmt.Close()
+	for _, membershipID := range keepNullMembershipIDs {
+		res, err := clearStmt.Exec(membershipID)
+		if err != nil {
+			return 0, err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("clear backfill rows affected: %w", err)
+		}
+		changed += n
+	}
+
+	stmt, err := tx.Prepare(`
+UPDATE catalog_memberships
+SET added_on = ?, added_on_source = 'verified', source_url = ?
+WHERE id = ? AND removed_on IS NULL
+  AND (
+    added_on IS NULL
+    OR date(added_on) != ?
+    OR COALESCE(added_on_source, '') != 'verified'
+    OR COALESCE(source_url, '') != ?
+  )`)
+	if err != nil {
+		return 0, err
+	}
+	defer stmt.Close()
+	for _, match := range matches {
+		addedOn := match.AddedOn.UTC().Format("2006-01-02")
+		res, err := stmt.Exec(
+			addedOn,
+			match.SourceURL,
+			match.MembershipID,
+			addedOn,
+			match.SourceURL,
+		)
+		if err != nil {
+			return 0, err
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("backfill rows affected: %w", err)
+		}
+		changed += n
+	}
+	return changed, nil
+}
+
+func validateCatalogDateBackfillChanges(matches []CatalogDateBackfillMatch, keepNullMembershipIDs []int64) error {
+	seen := make(map[int64]string, len(matches)+len(keepNullMembershipIDs))
+	for _, membershipID := range keepNullMembershipIDs {
+		if membershipID <= 0 {
+			return fmt.Errorf("invalid keep-null catalog membership id %d", membershipID)
+		}
+		if action, exists := seen[membershipID]; exists {
+			return fmt.Errorf("duplicate catalog membership id %d for keep-null and %s", membershipID, action)
+		}
+		seen[membershipID] = "keep-null"
+	}
+	for _, match := range matches {
+		if match.MembershipID <= 0 {
+			return fmt.Errorf("invalid verified catalog membership id %d", match.MembershipID)
+		}
+		if match.AddedOn.IsZero() {
+			return fmt.Errorf("verified catalog membership %d has an empty date", match.MembershipID)
+		}
+		if match.SourceURL == "" {
+			return fmt.Errorf("verified catalog membership %d has an empty source URL", match.MembershipID)
+		}
+		if action, exists := seen[match.MembershipID]; exists {
+			return fmt.Errorf("duplicate catalog membership id %d for verified and %s", match.MembershipID, action)
+		}
+		seen[match.MembershipID] = "verified"
+	}
+	return nil
+}
+
 // ApplyCatalogDateChanges атомарно сбрасывает устаревшие ошибочные совпадения
 // к безопасной observed-дате и записывает найденные официальные анонсы.
 // Если один membership есть в обоих списках, match применяется после reset.

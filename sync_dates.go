@@ -23,6 +23,8 @@ type catalogDateSyncStats struct {
 	Candidates     int
 	Targets        int
 	Matched        int
+	Verified       int
+	KeptNull       int
 	Ambiguous      int
 	Unmatched      int
 	Updated        int64
@@ -79,6 +81,10 @@ func syncCatalogDates(
 	currentYear int,
 ) (catalogDateSyncStats, error) {
 	var stats catalogDateSyncStats
+	backfill, err := loadCatalogDateBackfill()
+	if err != nil {
+		return stats, err
+	}
 	refs, err := psstore.FetchAnnouncementIndex(ctx, client, currentYear)
 	if err != nil {
 		return stats, err
@@ -116,13 +122,27 @@ func syncCatalogDates(
 		return stats, fmt.Errorf("в БД нет текущих периодов каталога: сначала выполните sync")
 	}
 
-	matchResult := matchCatalogDateTargets(targets, storedCandidates)
-	stats.Matched = matchResult.Matched
+	backfillResult, err := matchCatalogDateBackfillTargets(targets, backfill)
+	if err != nil {
+		return stats, err
+	}
+	matchResult := matchCatalogDateTargets(backfillResult.AnnouncementTargets, storedCandidates)
+	stats.Verified = len(backfillResult.Matches)
+	stats.KeptNull = len(backfillResult.KeepNullIDs)
+	stats.Matched = matchResult.Matched + stats.Verified
 	stats.AmbiguousGames = matchResult.AmbiguousGames
-	stats.UnmatchedGames = matchResult.UnmatchedGames
+	stats.UnmatchedGames = append(matchResult.UnmatchedGames, backfillResult.KeepNullGames...)
 	stats.Ambiguous = len(matchResult.AmbiguousGames)
-	stats.Unmatched = len(matchResult.UnmatchedGames)
-	stats.Updated, err = store.ApplyCatalogDateChangesTx(
+	stats.Unmatched = len(stats.UnmatchedGames)
+	backfillUpdated, err := store.ApplyCatalogDateBackfillTx(
+		tx,
+		backfillResult.Matches,
+		backfillResult.KeepNullIDs,
+	)
+	if err != nil {
+		return stats, err
+	}
+	announcementUpdated, err := store.ApplyCatalogDateChangesTx(
 		tx,
 		matchResult.Matches,
 		matchResult.ResetMembershipIDs,
@@ -130,6 +150,7 @@ func syncCatalogDates(
 	if err != nil {
 		return stats, err
 	}
+	stats.Updated = backfillUpdated + announcementUpdated
 	if err := tx.Commit(); err != nil {
 		return stats, err
 	}
@@ -276,11 +297,13 @@ func printCatalogDateStats(stats catalogDateSyncStats, verbose bool) {
 		stats.Candidates,
 	)
 	fmt.Printf(
-		"Даты каталога — игр: %d, совпало %d, неоднозначно %d, без анонса %d, обновлено %d\n",
+		"Даты каталога — игр: %d, совпало %d (проверено вручную %d), неоднозначно %d, без даты %d (оставлено намеренно %d), обновлено %d\n",
 		stats.Targets,
 		stats.Matched,
+		stats.Verified,
 		stats.Ambiguous,
 		stats.Unmatched,
+		stats.KeptNull,
 		stats.Updated,
 	)
 	if verbose && len(stats.AmbiguousGames) > 0 {
@@ -290,7 +313,7 @@ func printCatalogDateStats(stats catalogDateSyncStats, verbose bool) {
 		}
 	}
 	if verbose && len(stats.UnmatchedGames) > 0 {
-		fmt.Println("Без официального анонса или безопасного совпадения:")
+		fmt.Println("Без подтверждённой даты:")
 		for _, title := range stats.UnmatchedGames {
 			fmt.Printf("  - %s\n", title)
 		}

@@ -366,6 +366,167 @@ WHERE game_id = 'g1' AND removed_on IS NULL`).Scan(&newAddedOn, &newSource); err
 	}
 }
 
+func TestApplyCatalogDateBackfillUpdatesClearsAndIsIdempotent(t *testing.T) {
+	db := newTestDB(t, 2)
+	observed := time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC)
+	if _, err := RecordCatalogSnapshot(db, []string{"g1", "g2"}, observed); err != nil {
+		t.Fatalf("initial snapshot: %v", err)
+	}
+	targets, err := CurrentCatalogDateTargets(db)
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	byID := make(map[string]CatalogDateTarget, len(targets))
+	for _, target := range targets {
+		byID[target.GameID] = target
+	}
+	if err := SetCatalogAddedDate(
+		db,
+		"g2",
+		time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		"announcement",
+		"https://example.com/wrong",
+	); err != nil {
+		t.Fatalf("seed date to clear: %v", err)
+	}
+
+	apply := func() int64 {
+		t.Helper()
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		defer tx.Rollback()
+		changed, err := ApplyCatalogDateBackfillTx(tx, []CatalogDateBackfillMatch{{
+			MembershipID: byID["g1"].MembershipID,
+			AddedOn:      time.Date(2022, 6, 23, 0, 0, 0, 0, time.UTC),
+			SourceURL:    "https://example.com/history",
+		}}, []int64{byID["g2"].MembershipID})
+		if err != nil {
+			t.Fatalf("apply backfill: %v", err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+		return changed
+	}
+
+	if changed := apply(); changed != 2 {
+		t.Fatalf("first changed=%d, want 2", changed)
+	}
+	var addedOn, source, sourceURL string
+	if err := db.QueryRow(`
+SELECT date(added_on), added_on_source, source_url
+FROM catalog_memberships WHERE id = ?`, byID["g1"].MembershipID).Scan(&addedOn, &source, &sourceURL); err != nil {
+		t.Fatalf("read verified date: %v", err)
+	}
+	if addedOn != "2022-06-23" || source != "verified" || sourceURL != "https://example.com/history" {
+		t.Fatalf("g1 added=%q source=%q url=%q", addedOn, source, sourceURL)
+	}
+	var clearedDate, clearedSource, clearedURL sql.NullString
+	if err := db.QueryRow(`
+SELECT added_on, added_on_source, source_url
+FROM catalog_memberships WHERE id = ?`, byID["g2"].MembershipID).Scan(&clearedDate, &clearedSource, &clearedURL); err != nil {
+		t.Fatalf("read cleared date: %v", err)
+	}
+	if clearedDate.Valid || clearedSource.Valid || clearedURL.Valid {
+		t.Fatalf("g2 must stay null: date=%v source=%v url=%v", clearedDate, clearedSource, clearedURL)
+	}
+	if changed := apply(); changed != 0 {
+		t.Fatalf("idempotent changed=%d, want 0", changed)
+	}
+}
+
+func TestApplyCatalogDateBackfillIgnoresClosedMembership(t *testing.T) {
+	db := newTestDB(t, 2)
+	first := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	removed := time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC)
+	if _, err := RecordCatalogSnapshot(db, []string{"g1", "g2"}, first); err != nil {
+		t.Fatalf("initial snapshot: %v", err)
+	}
+	targets, err := CurrentCatalogDateTargets(db)
+	if err != nil {
+		t.Fatalf("targets: %v", err)
+	}
+	var membershipID int64
+	for _, target := range targets {
+		if target.GameID == "g1" {
+			membershipID = target.MembershipID
+		}
+	}
+	if _, err := RecordCatalogSnapshot(db, []string{"g2"}, removed); err != nil {
+		t.Fatalf("close membership: %v", err)
+	}
+
+	changes := []struct {
+		name     string
+		matches  []CatalogDateBackfillMatch
+		keepNull []int64
+	}{
+		{
+			name: "verified",
+			matches: []CatalogDateBackfillMatch{{
+				MembershipID: membershipID,
+				AddedOn:      time.Date(2022, 6, 23, 0, 0, 0, 0, time.UTC),
+				SourceURL:    "https://example.com/history",
+			}},
+		},
+		{name: "keep-null", keepNull: []int64{membershipID}},
+	}
+	for _, change := range changes {
+		t.Run(change.name, func(t *testing.T) {
+			tx, err := db.Begin()
+			if err != nil {
+				t.Fatalf("begin: %v", err)
+			}
+			changed, err := ApplyCatalogDateBackfillTx(tx, change.matches, change.keepNull)
+			if err != nil {
+				t.Fatalf("apply backfill: %v", err)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatalf("commit: %v", err)
+			}
+			if changed != 0 {
+				t.Fatalf("changed=%d, want 0 for closed membership", changed)
+			}
+		})
+	}
+	var addedOn, source sql.NullString
+	if err := db.QueryRow(`
+SELECT added_on, added_on_source FROM catalog_memberships WHERE id = ?`, membershipID).Scan(&addedOn, &source); err != nil {
+		t.Fatalf("read closed membership: %v", err)
+	}
+	if addedOn.Valid || source.Valid {
+		t.Fatalf("closed membership changed: date=%v source=%v", addedOn, source)
+	}
+}
+
+func TestValidateCatalogDateBackfillChangesRejectsDuplicateMemberships(t *testing.T) {
+	valid := CatalogDateBackfillMatch{
+		MembershipID: 1,
+		AddedOn:      time.Date(2022, 6, 23, 0, 0, 0, 0, time.UTC),
+		SourceURL:    "https://example.com/history",
+	}
+	tests := []struct {
+		name     string
+		matches  []CatalogDateBackfillMatch
+		keepNull []int64
+	}{
+		{name: "duplicate verified", matches: []CatalogDateBackfillMatch{valid, valid}},
+		{name: "verified and keep-null", matches: []CatalogDateBackfillMatch{valid}, keepNull: []int64{1}},
+		{name: "duplicate keep-null", keepNull: []int64{1, 1}},
+		{name: "zero date", matches: []CatalogDateBackfillMatch{{MembershipID: 1, SourceURL: valid.SourceURL}}},
+		{name: "empty source", matches: []CatalogDateBackfillMatch{{MembershipID: 1, AddedOn: valid.AddedOn}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := validateCatalogDateBackfillChanges(tt.matches, tt.keepNull); err == nil {
+				t.Fatal("invalid backfill changes must be rejected")
+			}
+		})
+	}
+}
+
 func TestListGamesSortsByCatalogAddedDateWithUnknownLast(t *testing.T) {
 	db := newTestDB(t, 3)
 	observed := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)

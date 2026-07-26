@@ -353,6 +353,41 @@ func TestIndexTemplateRendersCatalogAddedDateAndSource(t *testing.T) {
 	}
 }
 
+func TestIndexTemplateRendersVerifiedCatalogAddedDate(t *testing.T) {
+	tmpl, err := newIndexTemplate()
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	data := pageData{
+		Result: store.ListResult{
+			Games: []store.GameView{{
+				ID:                 "g1",
+				Title:              "Game",
+				CatalogAddedOn:     sql.NullTime{Time: time.Date(2022, 6, 23, 0, 0, 0, 0, time.UTC), Valid: true},
+				CatalogAddedSource: sql.NullString{String: "verified", Valid: true},
+				CatalogSourceURL:   sql.NullString{String: "https://example.com/history", Valid: true},
+			}},
+			Page:     1,
+			PageSize: pageSize,
+		},
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	body := buf.String()
+	for _, want := range []string{
+		`class="added-badge announcement"`,
+		`23.06.22`,
+		`https://example.com/history`,
+		`Дата добавления подтверждена историческим источником`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("rendered template missing %q", want)
+		}
+	}
+}
+
 func TestIndexTemplateRendersAddedDateBadgeObserved(t *testing.T) {
 	tmpl, err := newIndexTemplate()
 	if err != nil {

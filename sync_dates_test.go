@@ -96,6 +96,97 @@ FROM catalog_memberships WHERE game_id = 'g1' AND removed_on IS NULL`,
 	}
 }
 
+func TestSyncCatalogDatesAppliesCompleteVerifiedBackfill(t *testing.T) {
+	manifest, err := loadCatalogDateBackfill()
+	if err != nil {
+		t.Fatalf("load backfill: %v", err)
+	}
+	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer db.Close()
+
+	ids := make([]string, 0, len(manifest.Entries)+len(manifest.KeepNull))
+	for _, entry := range manifest.Entries {
+		if err := store.UpsertGame(db, store.GameRow{ID: entry.GameID, Title: entry.Title, TitleEn: entry.Title}); err != nil {
+			t.Fatalf("upsert %q: %v", entry.GameID, err)
+		}
+		ids = append(ids, entry.GameID)
+	}
+	for _, identity := range manifest.KeepNull {
+		if err := store.UpsertGame(db, store.GameRow{ID: identity.GameID, Title: identity.Title, TitleEn: identity.Title}); err != nil {
+			t.Fatalf("upsert %q: %v", identity.GameID, err)
+		}
+		ids = append(ids, identity.GameID)
+	}
+	if _, err := store.RecordCatalogSnapshot(
+		db,
+		ids,
+		time.Date(2026, 7, 25, 0, 0, 0, 0, time.UTC),
+	); err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+
+	const sitemapIndex = `<?xml version="1.0"?><sitemapindex>
+<sitemap><loc>https://blog.playstation.com/wp-sitemap-posts-recent.xml</loc></sitemap>
+</sitemapindex>`
+	const emptySitemap = `<?xml version="1.0"?><urlset></urlset>`
+	client := &http.Client{Transport: syncRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/wp-sitemap.xml":
+			return syncTestResponse(http.StatusOK, sitemapIndex), nil
+		case "/wp-sitemap-posts-recent.xml":
+			return syncTestResponse(http.StatusOK, emptySitemap), nil
+		default:
+			t.Fatalf("unexpected request: %s", req.URL)
+			return nil, nil
+		}
+	})}
+
+	stats, err := syncCatalogDates(context.Background(), db, client, false, 2026)
+	if err != nil {
+		t.Fatalf("sync dates: %v", err)
+	}
+	if stats.Targets != 161 || stats.Verified != 160 || stats.Matched != 160 ||
+		stats.KeptNull != 1 || stats.Unmatched != 1 || stats.Updated != 160 {
+		t.Fatalf("stats=%+v", stats)
+	}
+	var active, undated, verified, launchVerified int
+	if err := db.QueryRow(`
+SELECT COUNT(*),
+       SUM(cm.added_on IS NULL),
+       SUM(cm.added_on_source = 'verified'),
+       SUM(date(cm.added_on) = '2022-06-23' AND cm.added_on_source = 'verified')
+FROM games g
+JOIN catalog_memberships cm ON cm.game_id = g.id AND cm.removed_on IS NULL
+WHERE g.active = 1`).Scan(&active, &undated, &verified, &launchVerified); err != nil {
+		t.Fatalf("read backfill totals: %v", err)
+	}
+	if active != 161 || undated != 1 || verified != 160 || launchVerified != 130 {
+		t.Fatalf("active=%d undated=%d verified=%d launch=%d", active, undated, verified, launchVerified)
+	}
+	var forTheKingDate sql.NullTime
+	if err := db.QueryRow(`
+SELECT cm.added_on
+FROM catalog_memberships cm
+WHERE cm.game_id = 'EP4395-CUSA12941_00-FORTHEKING000001'
+  AND cm.removed_on IS NULL`).Scan(&forTheKingDate); err != nil {
+		t.Fatalf("read For The King: %v", err)
+	}
+	if forTheKingDate.Valid {
+		t.Fatalf("For The King date=%v, want NULL", forTheKingDate.Time)
+	}
+
+	second, err := syncCatalogDates(context.Background(), db, client, false, 2026)
+	if err != nil {
+		t.Fatalf("second sync dates: %v", err)
+	}
+	if second.Updated != 0 || second.Verified != 160 || second.KeptNull != 1 {
+		t.Fatalf("second stats=%+v", second)
+	}
+}
+
 func TestMatchCatalogDateTargetsIgnoresCandidatesTooFarAfterObservedFirstSeen(t *testing.T) {
 	firstSeen := time.Date(2025, 7, 10, 0, 0, 0, 0, time.UTC)
 	result := matchCatalogDateTargets(

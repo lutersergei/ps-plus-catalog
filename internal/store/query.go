@@ -89,14 +89,20 @@ func (g GameView) CatalogAddedShortLabel() string {
 	return g.CatalogAddedOn.Time.Format("02.01.06")
 }
 
-// CatalogAddedTitle объясняет точность даты: официальный анонс даёт точный
-// день, observed означает первый успешный снимок, в котором замечена игра.
+// CatalogAddedTitle объясняет точность даты: announcement извлечён из
+// официального анонса, verified подтверждён историческим источником, observed
+// означает первый успешный снимок, в котором замечена игра.
 func (g GameView) CatalogAddedTitle() string {
 	if !g.CatalogAddedOn.Valid {
 		return ""
 	}
-	if g.CatalogAddedSource.Valid && g.CatalogAddedSource.String == "announcement" {
-		return "Дата добавления по официальному анонсу PlayStation"
+	if g.CatalogAddedSource.Valid {
+		switch g.CatalogAddedSource.String {
+		case "announcement":
+			return "Дата добавления по официальному анонсу PlayStation"
+		case "verified":
+			return "Дата добавления подтверждена историческим источником"
+		}
 	}
 	return "Дата первого наблюдения в каталоге"
 }
@@ -105,7 +111,7 @@ func (g GameView) CatalogAddedTitle() string {
 // из турецкого региона, но пользователю удобнее русская страница магазина —
 // подменяем локаль только при отображении, данные остаются каноничными.
 func (g GameView) RuStoreURL() string {
-	return strings.Replace(g.StoreURL, "/tr-tr/", "/ru-ru/", 1)
+	return strings.Replace(g.StoreURL, "/tr-tr/", "/ru-ua/", 1)
 }
 
 // OCPlayerWeight — вес пользовательской оценки OpenCritic в среднем игроков.

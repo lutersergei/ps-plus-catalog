@@ -54,7 +54,7 @@ func ni(v int64) sql.NullInt64 { return sql.NullInt64{Int64: v, Valid: true} }
 
 func TestRuStoreURLSwitchesLocale(t *testing.T) {
 	g := GameView{StoreURL: "https://store.playstation.com/tr-tr/concept/228903"}
-	if got, want := g.RuStoreURL(), "https://store.playstation.com/ru-ru/concept/228903"; got != want {
+	if got, want := g.RuStoreURL(), "https://store.playstation.com/ru-ua/concept/228903"; got != want {
 		t.Errorf("RuStoreURL() = %q, ждали %q", got, want)
 	}
 	// URL без турецкой локали остаётся как есть

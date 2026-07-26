@@ -556,7 +556,7 @@ a.more { text-decoration: none; }
       {{end}}
       {{if .CatalogAddedOn.Valid}}
       {{$badgeClass := "added-badge observed"}}
-      {{if eq .CatalogAddedSource.String "announcement"}}{{$badgeClass = "added-badge announcement"}}{{end}}
+      {{if or (eq .CatalogAddedSource.String "announcement") (eq .CatalogAddedSource.String "verified")}}{{$badgeClass = "added-badge announcement"}}{{end}}
       {{if .CatalogSourceURL.Valid}}
       <a class="{{$badgeClass}}" href="{{.CatalogSourceURL.String}}" target="_blank" rel="noopener" title="{{.CatalogAddedTitle}}">{{.CatalogAddedShortLabel}}</a>
       {{else}}
