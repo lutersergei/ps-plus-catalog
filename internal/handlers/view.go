@@ -57,6 +57,13 @@ type gameView struct {
 	CatalogSourceURL      optionalString
 	RuSub                 bool
 	RuVoice               bool
+	Favorite              bool
+}
+
+type userView struct {
+	Email     string
+	Name      string
+	AvatarURL string
 }
 
 type viewListResult struct {
@@ -68,14 +75,25 @@ type viewListResult struct {
 }
 
 type pageData struct {
-	Result     viewListResult
-	Years      []int
-	Genres     []string
-	Params     domain.ListParams
-	BaseQuery  template.URL
-	Buckets    []domain.IndexBucket
-	NextOffset int
-	HasNext    bool
+	Result          viewListResult
+	Years           []int
+	Genres          []string
+	Params          domain.ListParams
+	BaseQuery       template.URL
+	Buckets         []domain.IndexBucket
+	NextOffset      int
+	HasNext         bool
+	AuthEnabled     bool
+	User            *userView
+	CSRFToken       string
+	BasePath        string
+	CatalogPath     string
+	FavoritesPath   string
+	LoginPath       string
+	LogoutPath      string
+	FavoriteAPIPath string
+	CurrentPath     string
+	FavoritesOnly   bool
 }
 
 func toGameView(game domain.CatalogItem) gameView {
@@ -101,7 +119,27 @@ func toGameView(game domain.CatalogItem) gameView {
 		CatalogAddedSource:    optionalStringValue(game.CatalogAddedSource),
 		CatalogSourceURL:      trustedCatalogSource(game.CatalogSourceURL),
 		RuSub:                 game.RuSub, RuVoice: game.RuVoice,
+		Favorite: game.Favorite,
 	}
+}
+
+func toUserView(user domain.User) userView {
+	return userView{
+		Email: user.Email, Name: user.Name,
+		AvatarURL: trustedGoogleAvatar(user.AvatarURL),
+	}
+}
+
+func trustedGoogleAvatar(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Port() != "" {
+		return ""
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "googleusercontent.com" && !strings.HasSuffix(host, ".googleusercontent.com") {
+		return ""
+	}
+	return parsed.String()
 }
 
 // HLTBHours возвращает длительность Main+Sides в часах.

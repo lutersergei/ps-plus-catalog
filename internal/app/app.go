@@ -9,8 +9,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"path"
 	"strings"
 	"syscall"
 	"time"
@@ -51,7 +53,7 @@ func Run(args []string, assets Assets, stdout, stderr io.Writer) int {
 	case "sync-dates":
 		err = runSyncDates(args[1:], assets, logger, stdout, stderr)
 	case "serve":
-		err = runServe(args[1:], assets, logger, stderr)
+		err = runServe(args[1:], assets, config, logger, stderr)
 	default:
 		fmt.Fprintln(stderr, "unknown command:", args[0])
 		return 2
@@ -68,15 +70,51 @@ func Run(args []string, assets Assets, stdout, stderr io.Writer) int {
 }
 
 type runtimeConfig struct {
-	openCriticKeys    []string
-	openCriticSiteKey string
+	openCriticKeys     []string
+	openCriticSiteKey  string
+	googleClientID     string
+	googleClientSecret string
+	publicURL          string
 }
 
 func readConfig() runtimeConfig {
 	return runtimeConfig{
-		openCriticKeys:    parseAPIKeys(os.Getenv("OPENCRITIC_API_KEYS"), os.Getenv("OPENCRITIC_API_KEY")),
-		openCriticSiteKey: strings.TrimSpace(os.Getenv("OPENCRITIC_SITE_API_KEY")),
+		openCriticKeys:     parseAPIKeys(os.Getenv("OPENCRITIC_API_KEYS"), os.Getenv("OPENCRITIC_API_KEY")),
+		openCriticSiteKey:  strings.TrimSpace(os.Getenv("OPENCRITIC_SITE_API_KEY")),
+		googleClientID:     strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_ID")),
+		googleClientSecret: strings.TrimSpace(os.Getenv("GOOGLE_CLIENT_SECRET")),
+		publicURL:          strings.TrimSpace(os.Getenv("PS_EXTRA_PUBLIC_URL")),
 	}
+}
+
+type webURLConfig struct {
+	basePath    string
+	redirectURL string
+	secure      bool
+}
+
+func parseWebURL(raw string) (webURLConfig, error) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return webURLConfig{}, fmt.Errorf("некорректный PS_EXTRA_PUBLIC_URL %q", raw)
+	}
+	host := strings.ToLower(parsed.Hostname())
+	loopback := host == "localhost" || host == "127.0.0.1" || host == "::1"
+	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && loopback) {
+		return webURLConfig{}, errors.New("PS_EXTRA_PUBLIC_URL должен использовать HTTPS; HTTP разрешён только для localhost")
+	}
+	basePath := strings.TrimSuffix(parsed.EscapedPath(), "/")
+	if basePath == "." || basePath == "/" {
+		basePath = ""
+	}
+	if basePath != "" && (path.Clean(basePath) != basePath || strings.Contains(basePath, "%")) {
+		return webURLConfig{}, errors.New("PS_EXTRA_PUBLIC_URL содержит неподдерживаемый path")
+	}
+	parsed.Path = basePath + "/auth/google/callback"
+	parsed.RawPath = ""
+	return webURLConfig{
+		basePath: basePath, redirectURL: parsed.String(), secure: parsed.Scheme == "https",
+	}, nil
 }
 
 func parseAPIKeys(list, single string) []string {

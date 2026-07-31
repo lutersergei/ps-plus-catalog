@@ -47,6 +47,17 @@ func likeEscape(value string) string {
 func buildListWhere(params domain.ListParams) (string, []any) {
 	where := []string{"active = 1"}
 	var args []any
+	if params.FavoritesOnly {
+		if params.ViewerUserID <= 0 {
+			where = append(where, "0 = 1")
+		} else {
+			where = append(where, `EXISTS (
+				SELECT 1 FROM user_favorites favorite
+				WHERE favorite.user_id = ? AND favorite.game_id = games.id
+			)`)
+			args = append(args, params.ViewerUserID)
+		}
+	}
 
 	if search := strings.TrimSpace(params.Search); search != "" {
 		like := "%" + likeEscape(search) + "%"
@@ -497,6 +508,9 @@ FROM games ` + whereSQL + " " + orderSQL + " LIMIT ? OFFSET ?"
 	if err := attachGenres(ctx, r.db, result.Games, ids); err != nil {
 		return result, err
 	}
+	if err := attachFavorites(ctx, r.db, result.Games, ids, params.ViewerUserID); err != nil {
+		return result, err
+	}
 	return result, nil
 }
 
@@ -528,6 +542,46 @@ func attachGenres(ctx context.Context, db *sql.DB, games []domain.CatalogItem, i
 	}
 	for i := range games {
 		games[i].Genres = byID[games[i].ID]
+	}
+	return nil
+}
+
+func attachFavorites(
+	ctx context.Context,
+	db *sql.DB,
+	games []domain.CatalogItem,
+	ids []string,
+	userID int64,
+) error {
+	if userID <= 0 || len(ids) == 0 {
+		return nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, userID)
+	args = append(args, stringsToAny(ids)...)
+	rows, err := db.QueryContext(ctx, `
+SELECT game_id
+FROM user_favorites
+WHERE user_id = ? AND game_id IN (`+placeholders+")", args...)
+	if err != nil {
+		return fmt.Errorf("query user favorites: %w", err)
+	}
+	defer rows.Close()
+
+	favorites := make(map[string]bool, len(ids))
+	for rows.Next() {
+		var gameID string
+		if err := rows.Scan(&gameID); err != nil {
+			return fmt.Errorf("scan user favorite: %w", err)
+		}
+		favorites[gameID] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("query user favorites: %w", err)
+	}
+	for index := range games {
+		games[index].Favorite = favorites[games[index].ID]
 	}
 	return nil
 }

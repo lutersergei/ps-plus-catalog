@@ -33,6 +33,11 @@ type ListParams struct {
 	PageSize      int
 	RuSubtitles   bool
 	RuVoice       bool
+	// ViewerUserID задаётся сервером после проверки сессии и используется только
+	// для отметок избранного. Значение никогда не читается из query string.
+	ViewerUserID int64
+	// FavoritesOnly ограничивает выдачу избранным текущего пользователя.
+	FavoritesOnly bool
 }
 
 // Normalize приводит параметры к безопасному и однозначному виду. Метод
@@ -128,6 +133,7 @@ type CatalogItem struct {
 	CatalogSourceURL      *string
 	RuSub                 bool
 	RuVoice               bool
+	Favorite              bool
 }
 
 // ListResult содержит одну страницу каталога и параметры пагинации.

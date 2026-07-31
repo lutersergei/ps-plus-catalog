@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PS Plus Extra (Турция) — каталог с оценками</title>
+<title>{{if .FavoritesOnly}}Избранное — {{end}}PS Plus Extra (Турция)</title>
 <style>
 :root {
   --paper: #EFF1EE;
@@ -49,15 +49,44 @@ a { color: var(--cobalt); }
 
 /* ---------- Шапка: одна строка ---------- */
 .masthead { border-bottom: 1px solid var(--line); }
-.masthead .bar { display: flex; align-items: center; gap: 14px; padding: 13px 0; }
+.masthead .bar { display: flex; align-items: center; gap: 14px; padding: 13px 24px; }
 .wordmark {
   font: 700 13px/1 var(--mono);
   letter-spacing: .16em; text-transform: uppercase;
   color: var(--cobalt);
+  text-decoration: none;
 }
+.wordmark:hover { color: var(--ink); }
 .count { color: var(--muted); font-size: 12.5px; }
 .count b { color: var(--ink); font-family: var(--mono); font-weight: 700; }
 .spacer { flex: 1; }
+.mainnav { display: flex; align-items: center; gap: 4px; }
+.navlink {
+  padding: 6px 9px; border-radius: 7px;
+  color: var(--muted); text-decoration: none; font-size: 12px; font-weight: 600;
+}
+.navlink:hover, .navlink.on { color: var(--cobalt); background: var(--line-soft); }
+.google-login {
+  color: var(--ink); background: var(--card); text-decoration: none;
+  border: 1px solid var(--line); border-radius: 7px;
+  padding: 6px 10px; font-size: 12px; font-weight: 600;
+}
+.google-login:hover { color: var(--cobalt); border-color: var(--cobalt); }
+.google-login .compact { display: none; }
+.account { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.avatar, .avatar-fallback {
+  width: 28px; height: 28px; border-radius: 50%; flex: 0 0 auto;
+  border: 1px solid var(--line); background: var(--line-soft);
+}
+.avatar { object-fit: cover; }
+.avatar-fallback { display: grid; place-items: center; font: 700 11px var(--mono); color: var(--cobalt); }
+.account-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; }
+.logout-form { margin: 0; }
+.logout-button {
+  border: 0; background: transparent; color: var(--muted); cursor: pointer;
+  padding: 5px 2px; font: 12px var(--sans);
+}
+.logout-button:hover { color: var(--bad); }
 
 /* Справка-тултип */
 .help { position: relative; }
@@ -101,6 +130,7 @@ a { color: var(--cobalt); }
   gap: 22px;
   align-items: start;
   padding: 20px 0 0;
+  min-width: 0;
 }
 .filter-sidebar {
   position: sticky;
@@ -114,6 +144,7 @@ a { color: var(--cobalt); }
   background: color-mix(in oklab, var(--card) 72%, transparent);
   border: 1px solid var(--line);
   border-radius: 10px;
+  min-width: 0;
 }
 .filter-heading {
   font: 700 11px/1 var(--mono);
@@ -123,7 +154,7 @@ a { color: var(--cobalt); }
 }
 .results-panel { min-width: 0; }
 .results-panel { padding-top: 0; }
-.f { display: flex; flex-direction: column; gap: 6px; }
+.f { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .f > label, .f > .flabel {
   font: 600 10px/1 var(--mono);
   letter-spacing: .12em; text-transform: uppercase;
@@ -138,7 +169,7 @@ a { color: var(--cobalt); }
 .f input[type=number] { width: 78px; font-family: var(--mono); }
 .filter-sidebar .f input[type=text],
 .filter-sidebar .f select,
-.filter-sidebar .genre-dd summary { width: 100%; }
+.filter-sidebar .genre-dd summary { width: 100%; min-width: 0; max-width: 100%; }
 .filter-sidebar .f input[type=number] { width: 100%; min-width: 0; }
 .filter-sidebar .pair { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
 .filter-sidebar .range { width: 100%; }
@@ -239,6 +270,20 @@ a.reset { font-size: 13px; color: var(--muted); padding-bottom: 8px; }
 .cover { position: relative; aspect-ratio: 1/1; background: var(--line-soft); }
 .cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .ru-flags { position: absolute; top: 7px; left: 7px; display: flex; gap: 4px; }
+.fav-toggle {
+  position: absolute; top: 7px; right: 7px; z-index: 2;
+  width: 32px; height: 32px; display: grid; place-items: center;
+  border: 1px solid rgba(255,255,255,.65); border-radius: 50%;
+  color: #fff; background: rgba(10,16,30,.56); backdrop-filter: blur(3px);
+  cursor: pointer; font-size: 18px; line-height: 1;
+}
+.fav-toggle:hover { transform: scale(1.06); background: rgba(10,16,30,.76); }
+.fav-toggle.on { color: #ff6b81; background: rgba(10,16,30,.78); }
+.fav-toggle:disabled { opacity: .55; cursor: wait; transform: none; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
 .ru-flags span {
   font: 700 8.5px/1 var(--mono); letter-spacing: .06em;
   color: #fff; background: rgba(10,16,30,.62);
@@ -390,10 +435,34 @@ a.more { text-decoration: none; }
   }
 }
 @media (max-width: 700px) {
-  .wrap { padding: 0 14px; }
-  .filter-sidebar { grid-template-columns: 1fr; padding: 14px; }
+  .wrap { width: 100%; padding: 0 14px; }
+  .app-shell, .filter-sidebar { width: 100%; min-width: 0; }
+  .filter-sidebar { grid-template-columns: minmax(0, 1fr); padding: 14px; }
   .filter-actions { align-items: stretch; flex-direction: column; }
   a.reset { padding-bottom: 0; }
+  .masthead .bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    gap: 8px;
+    padding: 13px 14px;
+  }
+  .wordmark {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    letter-spacing: .1em;
+  }
+  .count, .spacer { display: none; }
+  .mainnav { grid-column: 1 / -1; grid-row: 2; width: 100%; }
+  .navlink { flex: 1; text-align: center; }
+  .google-login, .account { grid-column: 2; grid-row: 1; }
+  .google-login .wide { display: none; }
+  .google-login .compact { display: inline; }
+  .account-name { display: none; }
+  .help { grid-column: 3; grid-row: 1; }
+  .tbtn { grid-column: 4; grid-row: 1; }
 }
 .pcount { text-align: center; color: var(--muted); font-size: 12px; padding-bottom: 50px; }
 .pcount b { font-family: var(--mono); color: var(--ink); }
@@ -411,13 +480,37 @@ a.more { text-decoration: none; }
 .empty p { color: var(--muted); margin: 8px auto 14px; max-width: 46ch; }
 </style>
 </head>
-<body>
+<body data-favorite-api="{{.FavoriteAPIPath}}" data-csrf-token="{{.CSRFToken}}" data-favorites-page="{{.FavoritesOnly}}">
 
 <header class="masthead">
   <div class="wrap bar">
-    <span class="wordmark">PS Plus Extra · Турция</span>
-    <span class="count"><b>{{.Result.Total}}</b> игр</span>
+    <a class="wordmark" href="{{.CatalogPath}}">PS Plus Extra · Турция</a>
+    <span class="count"><b>{{.Result.Total}}</b> {{if .FavoritesOnly}}в избранном{{else}}игр{{end}}</span>
+    {{if .AuthEnabled}}
+    <nav class="mainnav" aria-label="Разделы каталога">
+      <a class="navlink {{if not .FavoritesOnly}}on{{end}}" href="{{.CatalogPath}}">Каталог</a>
+      {{if .User}}
+      <a class="navlink {{if .FavoritesOnly}}on{{end}}" href="{{.FavoritesPath}}">♥ Избранное</a>
+      {{else}}
+      <a class="navlink" href="{{.LoginPath}}?next=favorites">♥ Избранное</a>
+      {{end}}
+    </nav>
+    {{end}}
     <span class="spacer"></span>
+    {{if .AuthEnabled}}
+      {{if .User}}
+      <div class="account" title="{{.User.Email}}">
+        {{if .User.AvatarURL}}<img class="avatar" src="{{.User.AvatarURL}}" alt="" referrerpolicy="no-referrer">{{else}}<span class="avatar-fallback">G</span>{{end}}
+        <span class="account-name">{{.User.Name}}</span>
+        <form class="logout-form" action="{{.LogoutPath}}" method="post">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button class="logout-button" type="submit">Выйти</button>
+        </form>
+      </div>
+      {{else}}
+      <a class="google-login" href="{{.LoginPath}}"><span class="wide">Войти через Google</span><span class="compact">Войти</span></a>
+      {{end}}
+    {{end}}
     <details class="help">
       <summary title="Как считаются оценки" aria-label="Как считаются оценки">?</summary>
       <div class="panel">
@@ -431,7 +524,7 @@ a.more { text-decoration: none; }
 </header>
 
 <div class="wrap">
-<form class="filters app-shell" method="get" action="">
+<form class="filters app-shell" method="get" action="{{.CurrentPath}}">
 <aside class="filter-sidebar">
   <div class="filter-heading">Фильтры</div>
   <div class="f">
@@ -544,10 +637,16 @@ a.more { text-decoration: none; }
 
 {{define "cards"}}
 {{$base := mul (add .Result.Page -1) .Result.PageSize}}
+{{$user := .User}}
 {{range $idx, $g := .Result.Games}}
   <div class="gcard" data-i="{{add $base $idx}}">
     <div class="cover">
       {{if .ImageURL}}<img loading="lazy" src="{{.ImageURL}}" alt="">{{end}}
+      {{if $user}}
+      <button class="fav-toggle {{if .Favorite}}on{{end}}" type="button" data-game-id="{{.ID}}" aria-pressed="{{.Favorite}}" aria-label="{{if .Favorite}}Удалить из избранного{{else}}Добавить в избранное{{end}}">
+        <span aria-hidden="true">{{if .Favorite}}♥{{else}}♡{{end}}</span>
+      </button>
+      {{end}}
       {{if or .RuSub .RuVoice}}
       <div class="ru-flags">
         {{if .RuSub}}<span>RU СУБ</span>{{end}}
@@ -667,8 +766,14 @@ a.more { text-decoration: none; }
 
 {{else}}
 <div class="empty">
+  {{if .FavoritesOnly}}
+  <div class="big">В избранном ничего не найдено</div>
+  <p>Добавьте игры сердцем в общем каталоге или сбросьте фильтры этого раздела.</p>
+  <a class="reset" href="{{.CatalogPath}}">Перейти в каталог</a>
+  {{else}}
   <div class="big">По этим фильтрам ничего не нашлось</div>
   <p>Расширьте диапазон оценок или времени прохождения, либо уберите ограничение по русскому языку.</p>
+  {{end}}
   <a class="reset" href="?">Сбросить все фильтры</a>
 </div>
 {{end}}
@@ -730,6 +835,42 @@ document.addEventListener('click', function (e) {
     if (!d.contains(e.target)) d.removeAttribute('open');
   });
 });
+
+/* Добавление и удаление игр из персонального избранного */
+(function () {
+  var api = document.body.dataset.favoriteApi;
+  var csrf = document.body.dataset.csrfToken;
+  var favoritesPage = document.body.dataset.favoritesPage === 'true';
+  if (!api || !csrf) return;
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest('.fav-toggle');
+    if (!button || button.disabled) return;
+    var wasFavorite = button.getAttribute('aria-pressed') === 'true';
+    var query = new URLSearchParams({game_id: button.dataset.gameId});
+    button.disabled = true;
+    fetch(api + '?' + query.toString(), {
+      method: wasFavorite ? 'DELETE' : 'POST',
+      credentials: 'same-origin',
+      headers: {'X-CSRF-Token': csrf, 'Accept': 'application/json'}
+    }).then(function (response) {
+      if (!response.ok) throw new Error(response.status);
+      return response.json();
+    }).then(function (result) {
+      if (favoritesPage && !result.favorite) {
+        location.reload();
+        return;
+      }
+      button.classList.toggle('on', result.favorite);
+      button.setAttribute('aria-pressed', result.favorite ? 'true' : 'false');
+      button.setAttribute('aria-label', result.favorite ? 'Удалить из избранного' : 'Добавить в избранное');
+      button.querySelector('[aria-hidden]').textContent = result.favorite ? '♥' : '♡';
+      button.disabled = false;
+    }).catch(function () {
+      button.disabled = false;
+      window.alert('Не удалось изменить избранное. Попробуйте ещё раз.');
+    });
+  });
+})();
 
 /* Бесконечная лента и буквенный индекс */
 (function () {

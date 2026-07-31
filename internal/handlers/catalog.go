@@ -27,13 +27,30 @@ type CatalogBrowser interface {
 
 // CatalogHandler разбирает HTTP-запрос и отображает каталог встроенным шаблоном.
 type CatalogHandler struct {
-	browser  CatalogBrowser
-	template *template.Template
-	logger   *slog.Logger
+	browser       CatalogBrowser
+	template      *template.Template
+	logger        *slog.Logger
+	accounts      AccountManager
+	google        GoogleOAuth
+	basePath      string
+	secureCookies bool
 }
 
 // NewCatalogHandler проверяет шаблон и создаёт обработчик каталога.
 func NewCatalogHandler(templateSource string, browser CatalogBrowser, logger *slog.Logger) (*CatalogHandler, error) {
+	return NewCatalogHandlerWithAuth(templateSource, browser, AuthConfig{}, logger)
+}
+
+// NewCatalogHandlerWithAuth создаёт каталог с Google OAuth и избранным.
+func NewCatalogHandlerWithAuth(
+	templateSource string,
+	browser CatalogBrowser,
+	auth AuthConfig,
+	logger *slog.Logger,
+) (*CatalogHandler, error) {
+	if err := validateAuthConfig(auth); err != nil {
+		return nil, err
+	}
 	parsed, err := template.New("index").Funcs(template.FuncMap{
 		"add":        func(a, b int) int { return a + b },
 		"mul":        func(a, b int) int { return a * b },
@@ -48,24 +65,80 @@ func NewCatalogHandler(templateSource string, browser CatalogBrowser, logger *sl
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &CatalogHandler{browser: browser, template: parsed, logger: logger}, nil
+	return &CatalogHandler{
+		browser: browser, template: parsed, logger: logger,
+		accounts: auth.Accounts, google: auth.Google,
+		basePath: auth.BasePath, secureCookies: auth.SecureCookies,
+	}, nil
 }
 
 // ServeHTTP обслуживает полную страницу и фрагменты карточек для бесконечной
 // ленты. Остальные пути возвращают 404.
 func (h *CatalogHandler) ServeHTTP(response http.ResponseWriter, request *http.Request) {
 	setSecurityHeaders(response.Header())
+	switch request.URL.Path {
+	case "/":
+		h.handleCatalog(response, request, false)
+	case "/favorites":
+		if !h.authEnabled() {
+			http.NotFound(response, request)
+			return
+		}
+		h.handleCatalog(response, request, true)
+	case "/auth/google/login":
+		if !h.authEnabled() {
+			http.NotFound(response, request)
+			return
+		}
+		h.handleGoogleLogin(response, request)
+	case "/auth/google/callback":
+		if !h.authEnabled() {
+			http.NotFound(response, request)
+			return
+		}
+		h.handleGoogleCallback(response, request)
+	case "/auth/logout":
+		if !h.authEnabled() {
+			http.NotFound(response, request)
+			return
+		}
+		h.handleLogout(response, request)
+	case "/api/favorite":
+		if !h.authEnabled() {
+			http.NotFound(response, request)
+			return
+		}
+		h.handleFavorite(response, request)
+	default:
+		http.NotFound(response, request)
+	}
+}
+
+func (h *CatalogHandler) handleCatalog(
+	response http.ResponseWriter,
+	request *http.Request,
+	favoritesOnly bool,
+) {
 	if request.Method != http.MethodGet && request.Method != http.MethodHead {
 		response.Header().Set("Allow", http.MethodGet+", "+http.MethodHead)
 		http.Error(response, "метод не поддерживается", http.StatusMethodNotAllowed)
 		return
 	}
-	if request.URL.Path != "/" {
-		http.NotFound(response, request)
+	account, authenticated, err := h.currentAccount(response, request)
+	if err != nil {
+		http.Error(response, "внутренняя ошибка сервера", http.StatusInternalServerError)
+		return
+	}
+	if favoritesOnly && !authenticated {
+		http.Redirect(response, request, h.externalPath("/auth/google/login")+"?next=favorites", http.StatusSeeOther)
 		return
 	}
 
 	params := listParams(request.URL.Query())
+	if authenticated {
+		params.ViewerUserID = account.User.ID
+	}
+	params.FavoritesOnly = favoritesOnly
 	fragment := request.URL.Query().Get("fragment") == "cards"
 	browse, err := h.browser.Browse(request.Context(), params, !fragment)
 	if err != nil {
@@ -75,6 +148,23 @@ func (h *CatalogHandler) ServeHTTP(response http.ResponseWriter, request *http.R
 	}
 
 	data := newPageData(browse, params)
+	data.AuthEnabled = h.authEnabled()
+	data.BasePath = h.basePath
+	data.CatalogPath = h.externalPath("/")
+	data.FavoritesPath = h.externalPath("/favorites")
+	data.LoginPath = h.externalPath("/auth/google/login")
+	data.LogoutPath = h.externalPath("/auth/logout")
+	data.FavoriteAPIPath = h.externalPath("/api/favorite")
+	data.CurrentPath = data.CatalogPath
+	data.FavoritesOnly = favoritesOnly
+	if favoritesOnly {
+		data.CurrentPath = data.FavoritesPath
+	}
+	if authenticated {
+		user := toUserView(account.User)
+		data.User = &user
+		data.CSRFToken = account.CSRFToken
+	}
 	var rendered bytes.Buffer
 	if fragment {
 		if err := h.template.ExecuteTemplate(&rendered, "cards", data); err != nil {

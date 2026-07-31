@@ -20,16 +20,16 @@ func TestMigrateRecordsVersionAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load migrations: %v", err)
 	}
-	if len(migrations) != 1 {
-		t.Fatalf("migrations=%d, ожидали 1", len(migrations))
+	if len(migrations) != 2 {
+		t.Fatalf("migrations=%d, ожидали 2", len(migrations))
 	}
-	want := migrations[0]
+	want := migrations[len(migrations)-1]
 
 	var version int
 	var name, checksum, appliedAt string
 	if err := db.QueryRowContext(ctx, `
 SELECT version, name, checksum, applied_at
-FROM schema_migrations`).Scan(&version, &name, &checksum, &appliedAt); err != nil {
+FROM schema_migrations WHERE version = ?`, want.Version).Scan(&version, &name, &checksum, &appliedAt); err != nil {
 		t.Fatalf("read migration: %v", err)
 	}
 	if version != want.Version || name != want.Name || checksum != want.Checksum || appliedAt == "" {
@@ -45,12 +45,12 @@ FROM schema_migrations`).Scan(&version, &name, &checksum, &appliedAt); err != ni
 		t.Fatalf("count migrations after rerun: %v", err)
 	}
 	if err := db.QueryRowContext(ctx,
-		`SELECT applied_at FROM schema_migrations WHERE version = 1`,
+		`SELECT applied_at FROM schema_migrations WHERE version = ?`, want.Version,
 	).Scan(&secondAppliedAt); err != nil {
 		t.Fatalf("read migration after rerun: %v", err)
 	}
-	if count != 1 || secondAppliedAt != appliedAt {
-		t.Fatalf("count=%d applied_at=%q, ожидали одну неизменную запись %q", count, secondAppliedAt, appliedAt)
+	if count != len(migrations) || secondAppliedAt != appliedAt {
+		t.Fatalf("count=%d applied_at=%q, ожидали %d неизменных записей, latest=%q", count, secondAppliedAt, len(migrations), appliedAt)
 	}
 }
 
@@ -106,11 +106,69 @@ INSERT INTO games (id, title, metacritic_score) VALUES ('legacy', 'Legacy Game',
 		t.Fatalf("legacy row=%q/%d", title, score)
 	}
 	var version int
-	if err := db.QueryRowContext(ctx, `SELECT version FROM schema_migrations`).Scan(&version); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil {
 		t.Fatalf("read version: %v", err)
 	}
-	if version != 1 {
-		t.Fatalf("version=%d, ожидали 1", version)
+	if version != 2 {
+		t.Fatalf("version=%d, ожидали 2", version)
+	}
+}
+
+func TestMigrateUpgradesVersionOneWithoutChangingCatalog(t *testing.T) {
+	ctx := context.Background()
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "version-one.db")
+	db, err := sql.Open("sqlite", sqliteDSN(path))
+	if err != nil {
+		t.Fatalf("open raw database: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, migrationTableSQL); err != nil {
+		t.Fatalf("create migration table: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, migrations[0].SQL); err != nil {
+		t.Fatalf("apply baseline: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO schema_migrations (version, name, checksum) VALUES (?, ?, ?)`,
+		migrations[0].Version, migrations[0].Name, migrations[0].Checksum,
+	); err != nil {
+		t.Fatalf("record baseline: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO games (id, title, active) VALUES ('preserved', 'Preserved Game', 1)`); err != nil {
+		t.Fatalf("seed game: %v", err)
+	}
+
+	if err := Migrate(ctx, db); err != nil {
+		t.Fatalf("migrate version one: %v", err)
+	}
+	var title string
+	if err := db.QueryRowContext(ctx, `SELECT title FROM games WHERE id = 'preserved'`).Scan(&title); err != nil {
+		t.Fatalf("read preserved game: %v", err)
+	}
+	if title != "Preserved Game" {
+		t.Fatalf("title=%q", title)
+	}
+	var latestVersion int
+	if err := db.QueryRowContext(ctx, `SELECT MAX(version) FROM schema_migrations`).Scan(&latestVersion); err != nil {
+		t.Fatalf("read latest migration: %v", err)
+	}
+	if latestVersion != 2 {
+		t.Fatalf("latest migration=%d, ожидали 2", latestVersion)
+	}
+	for _, table := range []string{"users", "user_sessions", "user_favorites"} {
+		var exists bool
+		if err := db.QueryRowContext(ctx, `
+SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?)`, table).Scan(&exists); err != nil {
+			t.Fatalf("check table %s: %v", table, err)
+		}
+		if !exists {
+			t.Errorf("table %s не создана", table)
+		}
 	}
 }
 
@@ -191,8 +249,8 @@ func TestMigrateSerializesConcurrentProcesses(t *testing.T) {
 	if err := db1.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("migration count=%d, ожидали 1", count)
+	if count != 2 {
+		t.Fatalf("migration count=%d, ожидали 2", count)
 	}
 }
 

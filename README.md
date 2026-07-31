@@ -4,7 +4,8 @@
 **Metacritic**, **OpenCritic** и временем прохождения **HowLongToBeat**, с
 веб-страницей: пагинация, фильтры по году, жанру, общей оценке, оценкам критиков,
 оценкам игроков и времени прохождения, сортировка по году / оценкам / названию /
-времени прохождения.
+времени прохождения. Пользователь может войти через Google, добавить игры в
+персональное избранное и открыть отдельную отфильтрованную ленту избранных игр.
 
 ## Как это устроено
 
@@ -16,7 +17,8 @@
   повторный запуск не перезапрашивает свежие.
 - **`serve`** — поднимает локальный HTTP-сервер, читает из SQLite и рендерит
   страницу. Фильтры/сортировка/пагинация работают серверным SQL через
-  query-параметры.
+  query-параметры; при настроенном Google OAuth также обслуживает вход, сессии и
+  персональное избранное.
 - **`sync-dates`** — отдельно обновляет даты появления игр по официальным
   анонсам PlayStation Blog и проверенному историческому манифесту.
 
@@ -244,6 +246,45 @@ cp .env.example .env
 > подтянутся при следующих запусках (кэш по `oc_checked_at`). Metacritic и HLTB не
 > лимитированы ключом и собираются для всех обрабатываемых за запуск игр.
 
+### Авторизация Google и избранное
+
+Авторизация опциональна: без Google-переменных каталог продолжает работать
+публично, но кнопки входа и избранного не показываются. Если задана только часть
+настроек, `serve` завершится с понятной ошибкой вместо запуска сломанного OAuth.
+
+1. В Google Cloud Console настройте OAuth consent screen.
+2. Создайте OAuth client типа **Web application**.
+3. Добавьте точный Authorized redirect URI:
+
+```text
+# локальная разработка
+http://localhost:8080/auth/google/callback
+
+# production под внешним префиксом /games
+https://slyuter.store/games/auth/google/callback
+```
+
+4. Добавьте в `.env`:
+
+```dotenv
+GOOGLE_CLIENT_ID=1234567890-example.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=google_oauth_client_secret
+PS_EXTRA_PUBLIC_URL=http://localhost:8080
+```
+
+Для production используйте
+`PS_EXTRA_PUBLIC_URL=https://slyuter.store/games`. Внешний URL обязан работать
+по HTTPS: HTTP разрешён кодом только для `localhost`/loopback, а Google не
+принимает обычный внешний HTTP callback. Reverse proxy должен снимать префикс
+`/games`: внутри контейнера callback обслуживается как `/auth/google/callback`.
+
+Приложение запрашивает только scopes `openid email profile`. Access token Google
+используется один раз для `userinfo` и не сохраняется. В SQLite записываются
+Google `sub`, профиль пользователя, SHA-256 случайного session token и избранные
+`productId`; сама session cookie — `HttpOnly`, `SameSite=Lax`, а на HTTPS также
+`Secure`. Сессия живёт 30 дней. Изменение избранного и выход дополнительно
+защищены CSRF-токеном.
+
 ### Миграции SQLite
 
 Миграции встроены в бинарник и автоматически выполняются перед любой командой,
@@ -269,12 +310,16 @@ sqlite3 ps-extra.db ".backup 'ps-extra.db.bak'"
 бинарник со старой схемой восстановите backup. Уже применённые SQL-файлы нельзя
 редактировать: несовпадение checksum или неизвестная более новая версия заставят
 приложение безопасно отказаться от запуска. Новая миграция добавляется отдельным
-файлом вида `internal/adapters/sqlite/migrations/0002_name.sql`.
+файлом вида `internal/adapters/sqlite/migrations/0003_name.sql`.
 
 При первом запуске версия `0001_baseline` принимает существующую БД актуального
 формата (с ключами `productId`) без потери данных и добавляет только отсутствующие
 исторические столбцы. Каталог с файлом БД должен оставаться доступным на запись
 для SQLite WAL/SHM.
+
+Миграция `0002_google_auth_favorites` добавляет таблицы `users`, `user_sessions`
+и `user_favorites`. Она не меняет каталог и безопасно применяется до запуска
+HTTP-сервера.
 
 ### 2. Показать страницу
 
@@ -287,8 +332,8 @@ sqlite3 ps-extra.db ".backup 'ps-extra.db.bak'"
 Откройте `http://localhost:8080` в браузере.
 
 > По умолчанию сервер слушает только `127.0.0.1` (локально). Для доступа извне
-> задайте `-addr :8080` и поставьте перед сервисом reverse proxy с TLS — в
-> приложении нет аутентификации.
+> задайте `-addr :8080` и поставьте перед сервисом reverse proxy с TLS. Вход
+> защищает персональные функции, но сам каталог намеренно остаётся публичным.
 
 ## Docker
 
@@ -346,6 +391,7 @@ internal/services/               сценарии просмотра, синхр
 internal/handlers/               HTTP-разбор, view model и рендеринг шаблона
 internal/adapters/psstore/       HTTP-клиент и парсеры PlayStation
 internal/adapters/scores/        Metacritic, OpenCritic и HowLongToBeat
+internal/adapters/googleauth/    Google OAuth 2.0 и OpenID Connect userinfo
 internal/adapters/sqlite/        миграции, транзакции и запросы SQLite
 internal/infrastructure/envfile/ чтение локального .env
 Dockerfile, docker-compose.yml, .env.example

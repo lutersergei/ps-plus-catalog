@@ -11,7 +11,7 @@ services:
       # БД (и при желании .env) хранятся на хосте, переживают пересоздание контейнера
       - ./data:/data
     env_file:
-      # ключи RapidAPI (OPENCRITIC_API_KEYS). Скопируйте .env.example -> .env
+      # ключи RapidAPI и опциональный Google OAuth. Скопируйте .env.example -> .env
       - path: .env
         required: false
     restart: unless-stopped
